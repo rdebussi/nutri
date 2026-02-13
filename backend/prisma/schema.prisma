@@ -1,0 +1,100 @@
+// Schema do banco de dados do Nutri
+// Cada "model" aqui vira uma tabela no PostgreSQL
+// e um tipo TypeScript gerado automaticamente
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// MODEL: User
+// ============================================
+// Representa um usuário da plataforma.
+// Separamos dados de autenticação (email, password)
+// dos dados de perfil nutricional (NutritionProfile).
+// Por quê? Porque são responsabilidades diferentes:
+// - User = "quem é você" (auth)
+// - NutritionProfile = "como é seu corpo" (negócio)
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String   // hash bcrypt, NUNCA texto puro
+  name      String
+  role      Role     @default(FREE)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  profile NutritionProfile?
+
+  @@map("users") // nome da tabela no PostgreSQL
+}
+
+// ============================================
+// ENUM: Role
+// ============================================
+// Define os planos de acesso do usuário.
+// FREE = funcionalidades limitadas
+// PRO = tudo liberado (paga via Stripe)
+// ADMIN = nós, administradores
+
+enum Role {
+  FREE
+  PRO
+  ADMIN
+}
+
+// ============================================
+// MODEL: NutritionProfile
+// ============================================
+// Perfil nutricional do usuário. Esses dados
+// serão enviados à OpenAI para gerar dietas.
+// Cada campo tem uma razão:
+// - weight/height → cálculo de IMC e taxa metabólica
+// - goal → o que a IA deve otimizar na dieta
+// - restrictions → alimentos que a IA deve evitar
+// - activityLevel → ajuste calórico
+
+model NutritionProfile {
+  id             String        @id @default(uuid())
+  userId         String        @unique @map("user_id")
+  birthDate      DateTime?     @map("birth_date")
+  gender         Gender?
+  weight         Float?        // em kg
+  height         Float?        // em cm
+  goal           Goal?
+  activityLevel  ActivityLevel? @map("activity_level")
+  restrictions   String[]      // ex: ["glúten", "lactose"]
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("nutrition_profiles")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum Goal {
+  LOSE_WEIGHT
+  GAIN_MUSCLE
+  MAINTAIN
+  HEALTH
+}
+
+enum ActivityLevel {
+  SEDENTARY
+  LIGHT
+  MODERATE
+  ACTIVE
+  VERY_ACTIVE
+}

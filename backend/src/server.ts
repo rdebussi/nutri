@@ -1,7 +1,9 @@
 import { buildApp } from './app.js'
 import { env } from './config/env.js'
+import { getPrisma } from './shared/database/prisma.js'
 
-const app = buildApp()
+const prisma = getPrisma()
+const app = buildApp({ prisma })
 
 app.listen({ port: env.PORT, host: env.HOST }, (err, address) => {
   if (err) {

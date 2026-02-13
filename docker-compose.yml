@@ -1,0 +1,49 @@
+# ====================================================
+# DOCKER COMPOSE
+# ====================================================
+# Sobe os serviços que a API precisa com UM comando:
+#   docker compose up -d
+#
+# Docker Compose define containers de forma declarativa.
+# Cada "service" é um container isolado (como uma mini VM).
+# Eles se comunicam pela rede interna "nutri-network".
+#
+# "-d" = detached (roda em background, libera o terminal)
+
+services:
+  # PostgreSQL: banco relacional (usuários, pagamentos)
+  postgres:
+    image: postgres:16-alpine  # Alpine = versão leve (~70MB vs ~400MB)
+    container_name: nutri-postgres
+    environment:
+      POSTGRES_USER: nutri
+      POSTGRES_PASSWORD: nutri123
+      POSTGRES_DB: nutri
+    ports:
+      - "5432:5432"  # host:container (acessa via localhost:5432)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data  # persiste dados entre restarts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nutri"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis: cache, sessões, rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: nutri-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+# Volumes nomeados: dados persistem mesmo se o container for removido
+volumes:
+  postgres_data:
+  redis_data:
