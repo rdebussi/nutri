@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify'
-import type { PrismaClient } from '../../generated/prisma/client.js'
+import type { PrismaClient } from '@prisma/client'
 import { DietService } from './diet.service.js'
 import { AiService } from '../ai/ai.service.js'
+import { MockAiService } from '../ai/ai.mock.js'
 import { authMiddleware } from '../../shared/middleware/auth.middleware.js'
 
 // ====================================================
@@ -24,8 +25,12 @@ export async function dietRoutes(
   app: FastifyInstance,
   opts: { prisma: PrismaClient }
 ) {
-  const aiService = new AiService(process.env.OPENAI_API_KEY || '')
-  const dietService = new DietService(opts.prisma, aiService)
+  // Se não tem API key, usa o mock (dieta fake para testar a interface)
+  const apiKey = process.env.OPENAI_API_KEY
+  const aiService = apiKey && apiKey !== 'sk-your-key-here'
+    ? new AiService(apiKey)
+    : new MockAiService()
+  const dietService = new DietService(opts.prisma, aiService as AiService)
 
   // Protege todas as rotas
   app.addHook('onRequest', authMiddleware)
