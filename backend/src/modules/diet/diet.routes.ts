@@ -26,8 +26,8 @@ export async function dietRoutes(
   opts: { prisma: PrismaClient }
 ) {
   // Se não tem API key, usa o mock (dieta fake para testar a interface)
-  const apiKey = process.env.OPENAI_API_KEY
-  const aiService = apiKey && apiKey !== 'sk-your-key-here'
+  const apiKey = process.env.GEMINI_API_KEY
+  const aiService = apiKey && apiKey !== 'your-gemini-key-here'
     ? new AiService(apiKey)
     : new MockAiService()
   const dietService = new DietService(opts.prisma, aiService as AiService)

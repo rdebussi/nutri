@@ -2,19 +2,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { AiService } from '../ai.service.js'
 
 // ====================================================
-// TESTES DO AI SERVICE
+// TESTES DO AI SERVICE (Gemini)
 // ====================================================
-// Mockamos a OpenAI inteira — nunca chamamos a API real
+// Mockamos o SDK do Gemini inteiro — nunca chamamos a API real
 // nos testes. Por quê?
 // 1. Testes devem ser RÁPIDOS (API real = 2-5 segundos)
 // 2. Testes devem ser DETERMINÍSTICOS (IA pode dar respostas diferentes)
-// 3. Testes devem ser GRATUITOS (cada chamada à OpenAI custa dinheiro)
+// 3. Testes devem ser GRATUITOS (cada chamada à API tem custo)
 
-const mockCreate = vi.fn()
+const mockGenerateContent = vi.fn()
 
-vi.mock('openai', () => ({
-  default: class {
-    chat = { completions: { create: mockCreate } }
+vi.mock('@google/generative-ai', () => ({
+  GoogleGenerativeAI: class {
+    getGenerativeModel() {
+      return { generateContent: mockGenerateContent }
+    }
   },
 }))
 
@@ -47,8 +49,8 @@ describe('AiService', () => {
   })
 
   it('should generate a diet from user input', async () => {
-    mockCreate.mockResolvedValue({
-      choices: [{ message: { content: JSON.stringify(fakeDiet) } }],
+    mockGenerateContent.mockResolvedValue({
+      response: { text: () => JSON.stringify(fakeDiet) },
     })
 
     const result = await aiService.generateDiet({
@@ -65,18 +67,20 @@ describe('AiService', () => {
     expect(result.meals[0].foods[0].name).toBe('Ovos')
     expect(result.totalCalories).toBe(230)
 
-    // Verifica que chamou a OpenAI com o model correto
-    expect(mockCreate).toHaveBeenCalledWith(
+    // Verifica que chamou o Gemini com as configs corretas
+    expect(mockGenerateContent).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: 'gpt-4o-mini',
-        temperature: 0.7,
+        generationConfig: expect.objectContaining({
+          temperature: 0.7,
+          responseMimeType: 'application/json',
+        }),
       })
     )
   })
 
-  it('should throw if OpenAI returns empty response', async () => {
-    mockCreate.mockResolvedValue({
-      choices: [{ message: { content: null } }],
+  it('should throw if Gemini returns empty response', async () => {
+    mockGenerateContent.mockResolvedValue({
+      response: { text: () => '' },
     })
 
     await expect(
@@ -84,13 +88,41 @@ describe('AiService', () => {
     ).rejects.toThrow('A IA não retornou uma resposta')
   })
 
-  it('should throw if OpenAI returns invalid JSON', async () => {
-    mockCreate.mockResolvedValue({
-      choices: [{ message: { content: 'isso não é JSON' } }],
+  it('should throw if Gemini returns invalid JSON', async () => {
+    mockGenerateContent.mockResolvedValue({
+      response: { text: () => 'isso não é JSON' },
     })
 
     await expect(
       aiService.generateDiet({ name: 'João' })
     ).rejects.toThrow('JSON malformado')
+  })
+
+  it('should normalize totals from food-level data', async () => {
+    // A IA pode retornar totais incorretos — o service deve recalcular
+    const dietWithBadTotals = {
+      ...fakeDiet,
+      totalCalories: 9999,  // Errado!
+      totalProtein: 9999,
+      totalCarbs: 9999,
+      totalFat: 9999,
+      meals: [{
+        ...fakeDiet.meals[0],
+        totalCalories: 9999,  // Errado!
+      }],
+    }
+
+    mockGenerateContent.mockResolvedValue({
+      response: { text: () => JSON.stringify(dietWithBadTotals) },
+    })
+
+    const result = await aiService.generateDiet({ name: 'João' })
+
+    // Deve recalcular a partir dos foods reais: 150 + 80 = 230
+    expect(result.meals[0].totalCalories).toBe(230)
+    expect(result.totalCalories).toBe(230)
+    expect(result.totalProtein).toBe(15)  // 12 + 3
+    expect(result.totalCarbs).toBe(15)    // 1 + 14
+    expect(result.totalFat).toBe(11)      // 10 + 1
   })
 })

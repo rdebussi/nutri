@@ -30,7 +30,12 @@
 **Objetivo:** Usuário gera uma dieta personalizada baseada no seu perfil.
 
 ### Backend
-- [x] Integração com OpenAI API + MockAiService para dev
+- [x] ~~Integração com OpenAI API~~ → Migrado para Google Gemini (2.5 Flash)
+  - SDK: @google/generative-ai (substituiu openai)
+  - responseMimeType: 'application/json' garante JSON válido
+  - Thinking tokens do Gemini 2.5 requerem maxOutputTokens alto (16384)
+  - Normalização de totais pós-IA (recalcula macros a partir dos foods)
+- [x] MockAiService como fallback quando GEMINI_API_KEY não está configurada
 - [x] Prompt engineering para geração de dietas
 - [x] Limites de geração por plano (FREE=3/mês, PRO=ilimitado)
 - [x] Salvar dietas geradas no MongoDB (Mongoose)
@@ -75,23 +80,37 @@
 - [x] Frontend: página /profile/exercises + TDEE no dashboard
 - [x] Testes: 86 backend + 24 frontend = 110 total
 
-### 3.3 Refeições Adaptativas
+### 3.3 Refeições Adaptativas ✅
 **Objetivo:** A dieta se adapta ao longo do dia conforme o que o usuário realmente come.
 
-- [ ] Pular refeição
-  - Opção "pular" no check-in (ex: acordou tarde, pulou café da manhã)
-  - Redistribui as calorias/macros da refeição pulada nas refeições seguintes
-  - Recalcula automaticamente as quantidades dos alimentos
-- [ ] Editar refeição
-  - Trocar alimento por outro (ex: sonho ao invés de pão com ovo)
-  - Recalcula o restante do dia para bater os macros diários
-  - Usa a base de dados de alimentos para buscar valores nutricionais
-- [ ] Exercício avulso impacta as refeições
-  - Se o usuário fez exercício extra, as calorias do dia aumentam
-  - Refeições seguintes se adaptam para compensar o gasto
-- [ ] Recálculo em cascata
-  - Motor de recálculo que recebe: macros target do dia, o que já foi consumido, o que falta
-  - Redistribui proporcionalmente entre as refeições restantes
+- [x] Motor de recálculo de refeições
+  - Funções puras: parseQuantity, scaleQuantity, recalculateMeals
+  - Redistribuição proporcional de macros/calorias entre refeições pendentes
+  - Escala de quantidades ("150g" × 1.18 → "177g")
+  - 23 testes unitários do motor
+- [x] Pular refeição
+  - Status enum: pending → completed | skipped (substitui boolean `completed`)
+  - Opção "Pulei" no check-in com timestamp (skippedAt)
+  - Redistribui calorias/macros da refeição pulada nas restantes
+  - Quantidades dos alimentos recalculadas automaticamente
+- [x] Exercício avulso impacta as refeições
+  - Exercícios extra (isExtra=true) aumentam a meta calórica do dia
+  - Refeições pendentes se adaptam para compensar o gasto
+  - Formulário de exercício extra na página de check-in
+- [x] Recálculo em cascata
+  - API retorna adaptedMeals + summary em POST e GET /check-ins
+  - Summary: consumed, remaining, dailyTarget, exerciseBonus
+  - Cada refeição adaptada mostra scaleFactor e quantidades originais
+- [ ] Editar refeição (adiado para 3.4 — depende da base de alimentos)
+  - Trocar alimento por outro com recálculo automático
+- [x] Frontend: redesign completo da página /check-in
+  - Cards expandíveis com detalhes dos alimentos (nome, qtd, macros)
+  - Botões "Comi"/"Pulei" por refeição com auto-save
+  - Badge "Adaptado +X%" em refeições recalculadas
+  - Quantidades originais riscadas com novas destacadas
+  - Resumo de macros: consumido | restante | meta do dia
+  - Seção de exercício extra com seleção e registro
+- [x] Testes: 115 backend + 26 frontend = 141 total
 
 ### 3.4 Mapeamento de Alimentos
 **Objetivo:** Base de dados nutricional para troca e edição inteligente de alimentos.

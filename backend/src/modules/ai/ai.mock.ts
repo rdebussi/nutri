@@ -4,7 +4,7 @@ import type { GeneratedDiet } from './ai.service.js'
 // ====================================================
 // MOCK DO AI SERVICE
 // ====================================================
-// Retorna uma dieta fake quando não há OPENAI_API_KEY.
+// Retorna uma dieta fake quando não há GEMINI_API_KEY.
 // Útil para desenvolvimento e testes da interface.
 // Simula um delay de 2s para parecer uma chamada real.
 

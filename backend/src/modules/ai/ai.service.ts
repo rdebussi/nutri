@@ -1,17 +1,23 @@
-import OpenAI from 'openai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import { buildDietPrompt, NUTRITIONIST_SYSTEM_PROMPT } from './ai.prompts.js'
 import type { DietPromptInput } from './ai.prompts.js'
 
 // ====================================================
-// AI SERVICE
+// AI SERVICE — Google Gemini
 // ====================================================
-// Encapsula TODA a comunicação com a OpenAI.
-// Nenhum outro módulo fala diretamente com a API da OpenAI.
+// Encapsula TODA a comunicação com a API do Gemini.
+// Nenhum outro módulo fala diretamente com a API de IA.
 //
 // Por que isolar? Porque:
-// 1. Se trocar de IA (Claude, Gemini), muda só aqui
+// 1. Se trocar de IA (OpenAI, Claude), muda só aqui
 // 2. Centraliza controle de custos e rate limiting
 // 3. Facilita testes (mockamos só este service)
+//
+// SDK: @google/generative-ai (oficial do Google)
+// Antes usávamos OpenAI, mas migramos para Gemini por:
+// - Tier gratuito generoso (15 RPM, 1M tokens/min)
+// - Gemini 2.0 Flash: rápido e barato
+// - responseMimeType: 'application/json' garante JSON válido
 
 export type GeneratedDiet = {
   title: string
@@ -36,59 +42,89 @@ export type GeneratedDiet = {
 }
 
 export class AiService {
-  private client: OpenAI
+  private client: GoogleGenerativeAI
 
   constructor(apiKey: string) {
-    // O client da OpenAI gerencia autenticação e rate limiting.
-    // Se a key for inválida, vai falhar ao fazer a primeira chamada.
-    this.client = new OpenAI({ apiKey })
+    // GoogleGenerativeAI é o client principal do SDK.
+    // Diferente do OpenAI SDK que tem client.chat.completions,
+    // aqui usamos client.getGenerativeModel() para obter um modelo.
+    this.client = new GoogleGenerativeAI(apiKey)
   }
 
   async generateDiet(input: DietPromptInput): Promise<GeneratedDiet> {
     const userPrompt = buildDietPrompt(input)
 
-    // chat.completions.create() é o endpoint principal da OpenAI.
+    // getGenerativeModel() cria uma instância do modelo.
     //
-    // "messages" segue o padrão de chat:
-    // - system: instruções permanentes (quem a IA é)
-    // - user: o pedido do usuário
+    // "model": gemini-2.5-flash é o modelo mais recente e inteligente da linha Flash.
+    //   Ideal para gerar JSON estruturado com boa qualidade.
+    //   Comparado ao gpt-4o-mini (que usávamos antes):
+    //   - Tier gratuito: 15 RPM, 1M tokens/min (vs pago da OpenAI)
+    //   - Velocidade: similar ou mais rápido
+    //   - gemini-2.5-flash > gemini-2.0-flash em raciocínio e qualidade
     //
-    // "model": gpt-4o-mini é mais barato e rápido que gpt-4o.
-    //   Para gerar JSON estruturado, é suficiente.
-    //   gpt-4o-mini: ~$0.15/1M tokens input, ~$0.60/1M tokens output
-    //   gpt-4o:      ~$2.50/1M tokens input, ~$10/1M tokens output
-    //   → 15x mais barato!
-    //
-    // "max_tokens": limita o tamanho da resposta.
-    //   Uma dieta completa usa ~800-1200 tokens.
-    //   Colocamos 2000 como margem de segurança.
-    //
-    // "temperature": controla a "criatividade".
-    //   0 = determinístico (mesma entrada → mesma saída)
-    //   1 = criativo (variações a cada chamada)
-    //   0.7 = equilíbrio (dietas variadas mas coerentes)
-    const response = await this.client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: NUTRITIONIST_SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt },
-      ],
-      max_tokens: 2000,
-      temperature: 0.7,
+    // "systemInstruction": equivalente ao "system message" da OpenAI.
+    //   Define a persona da IA (nutricionista profissional).
+    const model = this.client.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      systemInstruction: NUTRITIONIST_SYSTEM_PROMPT,
     })
 
-    // A resposta vem em response.choices[0].message.content
-    // Pode ser null se der erro, por isso a verificação.
-    const content = response.choices[0]?.message?.content
+    // generateContent() é o equivalente ao chat.completions.create() da OpenAI.
+    //
+    // "contents": array de mensagens (como o messages da OpenAI).
+    //   Cada mensagem tem role ('user' ou 'model') e parts (conteúdo).
+    //
+    // "generationConfig":
+    //   - temperature: 0.7 → equilíbrio entre criatividade e consistência
+    //   - maxOutputTokens: 16384 → parece muito, mas o Gemini 2.5 Flash usa
+    //     "thinking tokens" internos (~4000) antes de responder. A dieta em si
+    //     usa ~1600 tokens, mas thinking + output precisam caber no limite.
+    //     Com 2000 a resposta era TRUNCADA. 16384 dá margem de sobra.
+    //   - responseMimeType: 'application/json' → FORÇA o Gemini a retornar
+    //     JSON válido! Isso é uma vantagem sobre a OpenAI, que pode retornar
+    //     JSON envolto em ```json ... ```. Com essa opção, o parse nunca falha
+    //     por formatação.
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 16384,
+        responseMimeType: 'application/json',
+      },
+    })
+
+    // No Gemini, a resposta vem em result.response.text()
+    // (na OpenAI era response.choices[0].message.content)
+    const content = result.response.text()
 
     if (!content) {
       throw new Error('A IA não retornou uma resposta')
     }
 
-    // Parse do JSON — a IA pode retornar JSON inválido.
-    // O try/catch pega esse caso.
+    // Parse do JSON — mesmo com responseMimeType: 'application/json',
+    // mantemos o try/catch como safety net.
     try {
       const diet = JSON.parse(content) as GeneratedDiet
+
+      // Normaliza totais a partir dos dados reais dos foods.
+      // A IA pode retornar totalCalories: 2800 no nível da dieta
+      // mas meals que somam só 1800. Recalculamos para garantir consistência.
+      diet.meals = diet.meals.map(meal => ({
+        ...meal,
+        totalCalories: Math.round(meal.foods.reduce((sum, f) => sum + f.calories, 0)),
+      }))
+      diet.totalCalories = diet.meals.reduce((sum, m) => sum + m.totalCalories, 0)
+      diet.totalProtein = Math.round(
+        diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.protein, 0), 0),
+      )
+      diet.totalCarbs = Math.round(
+        diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.carbs, 0), 0),
+      )
+      diet.totalFat = Math.round(
+        diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.fat, 0), 0),
+      )
+
       return diet
     } catch {
       throw new Error('A IA retornou uma resposta inválida (JSON malformado)')
