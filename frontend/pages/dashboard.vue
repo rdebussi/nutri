@@ -1,9 +1,10 @@
 <!-- ====================================================
   DASHBOARD — Área logada principal
   ====================================================
-  Agora o dashboard tem 2 funções:
-  1. Botão para gerar nova dieta
-  2. Lista de dietas anteriores (histórico)
+  O dashboard tem 3 funções:
+  1. Check-in do dia (comeu/não comeu) + progresso semanal
+  2. Botão para gerar nova dieta
+  3. Lista de dietas anteriores (histórico)
 -->
 
 <script setup lang="ts">
@@ -13,16 +14,16 @@ definePageMeta({
 
 const authStore = useAuthStore()
 const dietStore = useDietStore()
+const checkinStore = useCheckinStore()
 const router = useRouter()
 
 // onMounted = roda quando a página aparece na tela.
-// Buscamos os dados do usuário E as dietas em paralelo.
-// Promise.all() roda as duas chamadas AO MESMO TEMPO
-// (ao invés de uma depois da outra). Mais rápido.
+// Buscamos todos os dados em paralelo com Promise.all().
 onMounted(async () => {
   await Promise.all([
     authStore.user ? Promise.resolve() : authStore.fetchUser(),
     dietStore.fetchAll(),
+    checkinStore.fetchToday(),
   ])
 })
 
@@ -49,6 +50,27 @@ async function handleGenerate() {
     </header>
 
     <main class="dashboard-content">
+      <!-- Seção de check-in do dia -->
+      <section v-if="dietStore.diets.length" class="checkin-section">
+        <div class="checkin-status">
+          <div>
+            <h2>Hoje</h2>
+            <p v-if="checkinStore.todayCheckIn">
+              Aderência: <strong>{{ checkinStore.todayCheckIn.adherenceRate }}%</strong>
+            </p>
+            <p v-else>Registre suas refeições de hoje</p>
+          </div>
+          <NuxtLink to="/check-in" class="btn-checkin">
+            {{ checkinStore.todayCheckIn ? 'Atualizar Check-in' : 'Fazer Check-in' }}
+          </NuxtLink>
+        </div>
+      </section>
+
+      <!-- Progresso semanal -->
+      <section v-if="dietStore.diets.length" class="progress-section">
+        <WeeklyProgress />
+      </section>
+
       <!-- Seção de geração -->
       <section class="generate-section">
         <h2>Gerar Nova Dieta</h2>
@@ -189,4 +211,34 @@ async function handleGenerate() {
 }
 
 .empty-state { text-align: center; color: #999; padding: 2rem; }
+
+.checkin-section {
+  padding: 1.25rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+}
+
+.checkin-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.checkin-status h2 { font-size: 1.1rem; margin-bottom: 0.25rem; }
+.checkin-status p { color: #666; font-size: 0.9rem; margin: 0; }
+
+.btn-checkin {
+  padding: 0.5rem 1.25rem;
+  background: #10b981;
+  color: white;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.btn-checkin:hover { background: #059669; }
+
+.progress-section { margin-bottom: 2rem; }
 </style>

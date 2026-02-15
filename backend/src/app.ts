@@ -5,6 +5,7 @@ import type { PrismaClient } from '@prisma/client'
 import { authRoutes } from './modules/auth/auth.routes.js'
 import { userRoutes } from './modules/user/user.routes.js'
 import { dietRoutes } from './modules/diet/diet.routes.js'
+import { checkinRoutes } from './modules/checkin/checkin.routes.js'
 import { errorHandler } from './shared/middleware/error-handler.js'
 
 // ====================================================
@@ -46,6 +47,7 @@ export function buildApp(opts: AppOptions = {}) {
     app.register(authRoutes, { prefix: '/api/v1/auth', prisma: opts.prisma })
     app.register(userRoutes, { prefix: '/api/v1/users', prisma: opts.prisma })
     app.register(dietRoutes, { prefix: '/api/v1/diets', prisma: opts.prisma })
+    app.register(checkinRoutes, { prefix: '/api/v1/check-ins', prisma: opts.prisma })
   }
 
   return app
