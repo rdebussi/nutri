@@ -1,29 +1,22 @@
 import { CheckIn } from './checkin.model.js'
-import type { ICheckIn } from './checkin.model.js'
+import type { ICheckIn, MealStatus } from './checkin.model.js'
 import { Diet } from '../diet/diet.model.js'
-import { AppError } from '../../shared/utils/errors.js'
-import { NotFoundError } from '../../shared/utils/errors.js'
+import type { IDiet } from '../diet/diet.model.js'
+import { AppError, NotFoundError } from '../../shared/utils/errors.js'
 import { calculateExerciseCalories } from '../../shared/utils/tdee.js'
+import { recalculateMeals } from '../../shared/utils/meal-recalculator.js'
+import type { RecalculationResult } from '../../shared/utils/meal-recalculator.js'
 
 // ====================================================
 // CHECK-IN SERVICE
 // ====================================================
 // Lógica de negócio dos check-ins diários.
 //
-// Conceitos importantes:
-//
-// 1. UPSERT — "update or insert"
-//    Se o check-in do dia já existe, atualiza. Se não, cria.
-//    Usa findOneAndUpdate com opção { upsert: true }.
-//
-// 2. NORMALIZAÇÃO DE DATA
-//    Toda data é normalizada para 00:00:00.000 do dia.
-//    Assim, "2026-02-15T14:30:00" e "2026-02-15T08:00:00"
-//    apontam para o mesmo check-in.
-//
-// 3. STREAK — sequência de dias consecutivos
-//    Conta quantos dias seguidos o usuário fez check-in
-//    com aderência > 50%. Gamificação simples.
+// FASE 3.3: Refeições Adaptativas
+// Agora o check-in usa status (pending/completed/skipped) em vez de
+// boolean completed. Quando o usuário pula uma refeição ou faz
+// exercício extra, o motor de recálculo redistribui macros/calorias
+// nas refeições restantes.
 
 export type WeeklyDayStat = {
   date: string
@@ -38,6 +31,12 @@ export type WeeklyStats = {
   averageAdherence: number
 }
 
+export type CheckInWithAdaptation = {
+  checkIn: ICheckIn
+  adaptedMeals: RecalculationResult['adaptedMeals']
+  summary: RecalculationResult['summary']
+}
+
 export class CheckInService {
 
   // Cria ou atualiza o check-in de um dia
@@ -45,7 +44,7 @@ export class CheckInService {
     userId: string,
     dietId: string,
     date: string | undefined,
-    meals: Array<{ mealName: string; completed: boolean; notes?: string }>,
+    meals: Array<{ mealName: string; status?: MealStatus; notes?: string }>,
     exercises?: Array<{
       exerciseName: string
       category: string
@@ -55,7 +54,7 @@ export class CheckInService {
       isExtra?: boolean
     }>,
     weightKg?: number,
-  ): Promise<ICheckIn> {
+  ): Promise<CheckInWithAdaptation> {
     // Verifica se a dieta existe e pertence ao usuário
     const diet = await Diet.findById(dietId).lean()
     if (!diet) {
@@ -68,10 +67,13 @@ export class CheckInService {
     const normalizedDate = normalizeDate(date)
     const adherenceRate = calculateAdherence(meals)
 
-    // Adiciona completedAt para refeições marcadas como completed
+    // Adiciona timestamps para refeições com status
     const mealsWithTimestamp = meals.map(meal => ({
-      ...meal,
-      completedAt: meal.completed ? new Date() : undefined,
+      mealName: meal.mealName,
+      status: meal.status || 'pending',
+      completedAt: meal.status === 'completed' ? new Date() : undefined,
+      skippedAt: meal.status === 'skipped' ? new Date() : undefined,
+      notes: meal.notes,
     }))
 
     // Calcula calorias queimadas por exercício
@@ -82,7 +84,7 @@ export class CheckInService {
       isExtra: ex.isExtra ?? false,
       caloriesBurned: calculateExerciseCalories({
         met: ex.met,
-        weightKg: weightKg || 70, // fallback 70kg se não informado
+        weightKg: weightKg || 70,
         durationMinutes: ex.durationMinutes,
         intensity: ex.intensity,
       }),
@@ -102,14 +104,38 @@ export class CheckInService {
       { upsert: true, new: true, runValidators: true },
     )
 
-    return checkIn
+    // Roda o motor de recálculo
+    const adaptation = this.computeAdaptation(checkIn, diet)
+
+    return { checkIn, ...adaptation }
   }
 
   // Busca check-in de uma data específica (default: hoje)
-  async getByDate(userId: string, date?: string): Promise<ICheckIn | null> {
+  // Retorna com refeições adaptadas se houver dieta associada
+  async getByDate(userId: string, date?: string): Promise<CheckInWithAdaptation | null> {
     const normalizedDate = normalizeDate(date)
 
-    return CheckIn.findOne({ userId, date: normalizedDate }).lean()
+    const checkIn = await CheckIn.findOne({ userId, date: normalizedDate }).lean()
+    if (!checkIn) return null
+
+    // Busca a dieta para calcular adaptações
+    const diet = await Diet.findById(checkIn.dietId).lean()
+    if (!diet) {
+      return {
+        checkIn: checkIn as ICheckIn,
+        adaptedMeals: [],
+        summary: {
+          consumed: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+          remaining: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+          dailyTarget: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+          exerciseBonus: 0,
+        },
+      }
+    }
+
+    const adaptation = this.computeAdaptation(checkIn as ICheckIn, diet)
+
+    return { checkIn: checkIn as ICheckIn, ...adaptation }
   }
 
   // Estatísticas dos últimos 7 dias
@@ -128,7 +154,7 @@ export class CheckInService {
     const weeklyStats: WeeklyDayStat[] = checkIns.map(c => ({
       date: c.date.toISOString().split('T')[0],
       adherenceRate: c.adherenceRate,
-      mealsCompleted: c.meals.filter(m => m.completed).length,
+      mealsCompleted: c.meals.filter(m => m.status === 'completed').length,
       mealsTotal: c.meals.length,
     }))
 
@@ -156,12 +182,10 @@ export class CheckInService {
       const checkInDate = new Date(checkIn.date)
       checkInDate.setHours(0, 0, 0, 0)
 
-      // Se não é o dia esperado, quebra o streak
       if (checkInDate.getTime() !== expectedDate.getTime()) {
         break
       }
 
-      // Só conta se aderência > 50%
       if (checkIn.adherenceRate > 50) {
         streak++
         expectedDate.setDate(expectedDate.getDate() - 1)
@@ -171,6 +195,55 @@ export class CheckInService {
     }
 
     return streak
+  }
+
+  // ====================================================
+  // MOTOR DE RECÁLCULO — integração
+  // ====================================================
+  // Computa as refeições adaptadas usando o motor de recálculo.
+  // Recebe o check-in (com status das refeições e exercícios) e a dieta original.
+  private computeAdaptation(
+    checkIn: ICheckIn,
+    diet: IDiet,
+  ): { adaptedMeals: RecalculationResult['adaptedMeals']; summary: RecalculationResult['summary'] } {
+    // Monta mealStatuses a partir do check-in
+    const mealStatuses: Record<string, 'completed' | 'skipped' | 'pending'> = {}
+    for (const meal of checkIn.meals) {
+      mealStatuses[meal.mealName] = meal.status || 'pending'
+    }
+    // Refeições da dieta que não estão no check-in ficam como 'pending'
+    for (const meal of diet.meals) {
+      if (!(meal.name in mealStatuses)) {
+        mealStatuses[meal.name] = 'pending'
+      }
+    }
+
+    // exerciseBonus = calorias de exercícios EXTRA (fora da rotina)
+    const extraCaloriesBurned = (checkIn.exercises || [])
+      .filter(e => e.isExtra)
+      .reduce((sum, e) => sum + e.caloriesBurned, 0)
+
+    // Usa a SOMA REAL das meals como target, não diet.totalCalories.
+    // Motivo: a IA pode gerar diet.totalCalories ligeiramente diferente
+    // da soma das meals. Usar a soma garante sf = 1.0 quando nada muda.
+    const dailyTargets = {
+      calories: diet.meals.reduce((sum, m) => sum + m.totalCalories, 0),
+      protein: diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.protein, 0), 0),
+      carbs: diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.carbs, 0), 0),
+      fat: diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.fat, 0), 0),
+    }
+
+    const result = recalculateMeals({
+      originalMeals: diet.meals,
+      mealStatuses,
+      dailyTargets,
+      extraCaloriesBurned,
+    })
+
+    return {
+      adaptedMeals: result.adaptedMeals,
+      summary: result.summary,
+    }
   }
 }
 
@@ -184,8 +257,8 @@ function normalizeDate(date?: string | Date): Date {
   return d
 }
 
-function calculateAdherence(meals: Array<{ completed: boolean }>): number {
+function calculateAdherence(meals: Array<{ status?: MealStatus }>): number {
   if (meals.length === 0) return 0
-  const completed = meals.filter(m => m.completed).length
+  const completed = meals.filter(m => m.status === 'completed').length
   return Math.round((completed / meals.length) * 100)
 }

@@ -7,7 +7,8 @@ import { buildApp } from '../../../app.js'
 // Testamos o fluxo HTTP completo:
 // Request → Rota → Validação → Service → Response
 //
-// Mockamos: Prisma (PostgreSQL), JWT (auth), Mongoose models
+// FASE 3.3: Respostas incluem adaptedMeals e summary.
+// Meals usam status ('pending'|'completed'|'skipped') em vez de boolean.
 
 const mockPrisma = {
   user: {
@@ -50,6 +51,26 @@ vi.mock('../../diet/diet.model.js', () => ({
   },
 }))
 
+// Dieta mock com estrutura completa (para recálculo funcionar)
+const fullMockDiet = {
+  _id: 'diet-456',
+  userId: 'user-123',
+  meals: [
+    {
+      name: 'Café da manhã', time: '07:00', totalCalories: 400,
+      foods: [{ name: 'Pão', quantity: '100g', calories: 400, protein: 20, carbs: 50, fat: 10 }],
+    },
+    {
+      name: 'Almoço', time: '12:00', totalCalories: 600,
+      foods: [{ name: 'Arroz e Frango', quantity: '300g', calories: 600, protein: 40, carbs: 60, fat: 15 }],
+    },
+  ],
+  totalCalories: 1000,
+  totalProtein: 60,
+  totalCarbs: 110,
+  totalFat: 25,
+}
+
 describe('CheckIn Routes', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -68,8 +89,8 @@ describe('CheckIn Routes', () => {
       dietId: 'diet-456',
       date: '2026-02-15',
       meals: [
-        { mealName: 'Café da manhã', completed: true },
-        { mealName: 'Almoço', completed: false },
+        { mealName: 'Café da manhã', status: 'completed' },
+        { mealName: 'Almoço', status: 'pending' },
       ],
     }
 
@@ -77,13 +98,20 @@ describe('CheckIn Routes', () => {
       const app = buildApp({ prisma: mockPrisma })
 
       mockDietFindById.mockReturnValue({
-        lean: vi.fn().mockResolvedValue({ _id: 'diet-456', userId: 'user-123' }),
+        lean: vi.fn().mockResolvedValue(fullMockDiet),
       })
       mockFindOneAndUpdate.mockResolvedValue({
         _id: 'checkin-789',
         userId: 'user-123',
-        ...validPayload,
+        dietId: 'diet-456',
+        date: new Date('2026-02-15'),
+        meals: [
+          { mealName: 'Café da manhã', status: 'completed', completedAt: new Date() },
+          { mealName: 'Almoço', status: 'pending' },
+        ],
+        exercises: [],
         adherenceRate: 50,
+        totalCaloriesBurned: 0,
       })
 
       const response = await app.inject({
@@ -96,7 +124,11 @@ describe('CheckIn Routes', () => {
       expect(response.statusCode).toBe(201)
       const body = response.json()
       expect(body.success).toBe(true)
-      expect(body.data.adherenceRate).toBe(50)
+      // Resposta agora tem { checkIn, adaptedMeals, summary }
+      expect(body.data.checkIn).toBeDefined()
+      expect(body.data.adaptedMeals).toBeDefined()
+      expect(body.data.summary).toBeDefined()
+      expect(body.data.checkIn.adherenceRate).toBe(50)
     })
 
     it('should return 401 without auth token', async () => {
@@ -160,16 +192,23 @@ describe('CheckIn Routes', () => {
   // ====================================================
 
   describe('GET /api/v1/check-ins', () => {
-    it('should return 200 with check-in for specific date', async () => {
+    it('should return 200 with check-in and adapted meals', async () => {
       const app = buildApp({ prisma: mockPrisma })
 
       const mockCheckIn = {
         _id: 'checkin-789',
         userId: 'user-123',
-        adherenceRate: 75,
-        meals: [{ mealName: 'Café', completed: true }],
+        dietId: 'diet-456',
+        adherenceRate: 50,
+        meals: [
+          { mealName: 'Café da manhã', status: 'completed' },
+          { mealName: 'Almoço', status: 'pending' },
+        ],
+        exercises: [],
+        totalCaloriesBurned: 0,
       }
       mockFindOne.mockReturnValue({ lean: vi.fn().mockResolvedValue(mockCheckIn) })
+      mockDietFindById.mockReturnValue({ lean: vi.fn().mockResolvedValue(fullMockDiet) })
 
       const response = await app.inject({
         method: 'GET',
@@ -180,7 +219,9 @@ describe('CheckIn Routes', () => {
       expect(response.statusCode).toBe(200)
       const body = response.json()
       expect(body.success).toBe(true)
-      expect(body.data.adherenceRate).toBe(75)
+      expect(body.data.checkIn.adherenceRate).toBe(50)
+      expect(body.data.adaptedMeals).toBeDefined()
+      expect(body.data.summary).toBeDefined()
     })
 
     it('should return 200 with null when no check-in exists', async () => {
@@ -220,7 +261,14 @@ describe('CheckIn Routes', () => {
       const app = buildApp({ prisma: mockPrisma })
 
       const mockCheckIns = [
-        { date: new Date('2026-02-15'), adherenceRate: 80, meals: [{ completed: true }, { completed: false }] },
+        {
+          date: new Date('2026-02-15'),
+          adherenceRate: 80,
+          meals: [
+            { mealName: 'Café', status: 'completed' },
+            { mealName: 'Almoço', status: 'pending' },
+          ],
+        },
       ]
       mockFind.mockReturnValue({
         sort: vi.fn().mockReturnValue({

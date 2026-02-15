@@ -1,43 +1,43 @@
 <!-- ====================================================
-  CHECK-IN — Registro diário de refeições
+  CHECK-IN — Registro diário de refeições adaptativas
   ====================================================
-  O usuário marca quais refeições da dieta ele comeu.
-  As refeições vêm da última dieta gerada.
-  O check-in é salvo como um upsert (cria ou atualiza).
+  FASE 3.3: O usuário marca refeições como "comi" ou "pulei".
+  Quando uma refeição é pulada ou exercício extra é feito,
+  as refeições pendentes são recalculadas automaticamente.
 -->
 
 <script setup lang="ts">
+type MealStatus = 'pending' | 'completed' | 'skipped'
+
 definePageMeta({
   middleware: 'auth',
 })
 
 const dietStore = useDietStore()
 const checkinStore = useCheckinStore()
-const router = useRouter()
+const exerciseStore = useExerciseStore()
 
-// Estado local para os checkboxes e notas
-const mealStates = ref<Array<{ mealName: string; completed: boolean; notes: string }>>([])
+// Estado local
+type MealState = { mealName: string; status: MealStatus; notes: string }
+const mealStates = ref<MealState[]>([])
 const saving = ref(false)
 const saved = ref(false)
 const activeDiet = ref<typeof dietStore.currentDiet>(null)
+const expandedMeal = ref<string | null>(null) // qual meal está expandida
 
 onMounted(async () => {
-  // Busca as dietas do usuário para encontrar a mais recente
   if (!dietStore.diets.length) {
     await dietStore.fetchAll()
   }
 
-  // Usa a dieta mais recente como referência
   if (dietStore.diets.length > 0) {
     const latest = dietStore.diets[0]
     await dietStore.fetchById(latest._id)
     activeDiet.value = dietStore.currentDiet
   }
 
-  // Busca check-in de hoje (se já existe)
   await checkinStore.fetchToday()
-
-  // Inicializa os estados das refeições
+  await exerciseStore.fetchExercises()
   initializeMealStates()
 })
 
@@ -47,42 +47,127 @@ function initializeMealStates() {
   const todayMeals = checkinStore.todayCheckIn?.meals
 
   mealStates.value = activeDiet.value.meals.map((meal) => {
-    // Se já existe check-in de hoje, preenche com os dados salvos
     const existing = todayMeals?.find(m => m.mealName === meal.name)
     return {
       mealName: meal.name,
-      completed: existing?.completed ?? false,
+      status: existing?.status ?? 'pending',
       notes: existing?.notes ?? '',
     }
   })
 }
 
-const completedCount = computed(() =>
-  mealStates.value.filter(m => m.completed).length
-)
-
+// Computed: contagem de status
+const completedCount = computed(() => mealStates.value.filter(m => m.status === 'completed').length)
+const skippedCount = computed(() => mealStates.value.filter(m => m.status === 'skipped').length)
 const totalCount = computed(() => mealStates.value.length)
-
 const adherencePercent = computed(() =>
-  totalCount.value > 0
-    ? Math.round((completedCount.value / totalCount.value) * 100)
-    : 0
+  totalCount.value > 0 ? Math.round((completedCount.value / totalCount.value) * 100) : 0,
 )
 
-async function handleSave() {
+// Busca a meal adaptada correspondente
+function getAdaptedMeal(mealName: string) {
+  return checkinStore.adaptedMeals.find(m => m.name === mealName)
+}
+
+// Macros da refeição: usa adapted se disponível, senão calcula dos foods originais
+function getMealMacros(mealName: string, index: number) {
+  const adapted = getAdaptedMeal(mealName)
+  if (adapted) {
+    return {
+      totalCalories: adapted.totalCalories,
+      totalProtein: adapted.totalProtein,
+      totalCarbs: adapted.totalCarbs,
+      totalFat: adapted.totalFat,
+    }
+  }
+  // Fallback: soma dos foods originais da dieta
+  const dietMeal = activeDiet.value?.meals[index]
+  if (!dietMeal?.foods) return { totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0 }
+  return {
+    totalCalories: dietMeal.totalCalories,
+    totalProtein: dietMeal.foods.reduce((sum: number, f: any) => sum + (f.protein || 0), 0),
+    totalCarbs: dietMeal.foods.reduce((sum: number, f: any) => sum + (f.carbs || 0), 0),
+    totalFat: dietMeal.foods.reduce((sum: number, f: any) => sum + (f.fat || 0), 0),
+  }
+}
+
+// Ações de refeição
+function setMealStatus(mealName: string, status: MealStatus) {
+  const meal = mealStates.value.find(m => m.mealName === mealName)
+  if (meal) {
+    meal.status = status
+    handleSave() // Auto-save ao mudar status
+  }
+}
+
+function toggleExpand(mealName: string) {
+  expandedMeal.value = expandedMeal.value === mealName ? null : mealName
+}
+
+// Exercício extra
+const showExerciseForm = ref(false)
+const extraExercise = ref({
+  exerciseName: '',
+  category: '',
+  met: 0,
+  durationMinutes: 30,
+  intensity: 'MODERATE',
+})
+
+function selectExercise(exercise: { name: string; category: string; met: number }) {
+  extraExercise.value.exerciseName = exercise.name
+  extraExercise.value.category = exercise.category
+  extraExercise.value.met = exercise.met
+}
+
+async function addExerciseAndSave() {
+  if (!extraExercise.value.exerciseName) return
+  showExerciseForm.value = false
+
+  // Inclui o exercício extra no save
+  await handleSave([{
+    exerciseName: extraExercise.value.exerciseName,
+    category: extraExercise.value.category,
+    met: extraExercise.value.met,
+    durationMinutes: extraExercise.value.durationMinutes,
+    intensity: extraExercise.value.intensity,
+    isExtra: true,
+  }])
+
+  // Reset form
+  extraExercise.value = { exerciseName: '', category: '', met: 0, durationMinutes: 30, intensity: 'MODERATE' }
+}
+
+// Salvar check-in
+async function handleSave(extraExercises?: Array<{
+  exerciseName: string; category: string; met: number;
+  durationMinutes: number; intensity: string; isExtra: boolean;
+}>) {
   if (!activeDiet.value) return
 
   saving.value = true
   saved.value = false
+
+  // Merge exercícios existentes com novos
+  const existingExercises = checkinStore.todayCheckIn?.exercises || []
+  const exercises = [...existingExercises.map(e => ({
+    exerciseName: e.exerciseName,
+    category: e.category,
+    met: 0, // não temos o MET no check-in salvo, mas o backend recalcula
+    durationMinutes: e.durationMinutes,
+    intensity: 'MODERATE',
+    isExtra: e.isExtra,
+  })), ...(extraExercises || [])]
 
   try {
     await checkinStore.submitCheckIn(
       activeDiet.value._id,
       mealStates.value.map(m => ({
         mealName: m.mealName,
-        completed: m.completed,
+        status: m.status,
         ...(m.notes ? { notes: m.notes } : {}),
       })),
+      exercises.length > 0 ? exercises : undefined,
     )
     saved.value = true
     setTimeout(() => { saved.value = false }, 3000)
@@ -92,213 +177,321 @@ async function handleSave() {
     saving.value = false
   }
 }
+
+// Helpers de formatação
+function formatMacro(value: number): string {
+  return Math.round(value).toLocaleString('pt-BR')
+}
+
+function scalePercent(factor: number): string {
+  const pct = Math.round((factor - 1) * 100)
+  if (pct > 0) return `+${pct}%`
+  if (pct < 0) return `${pct}%`
+  return ''
+}
 </script>
 
 <template>
-  <div class="checkin-page">
-    <header class="checkin-header">
-      <NuxtLink to="/dashboard" class="back-link">← Voltar</NuxtLink>
-      <h1>Check-in do Dia</h1>
-    </header>
-
-    <!-- Sem dieta ativa -->
-    <div v-if="!activeDiet" class="empty-state">
-      <p>Você ainda não tem uma dieta gerada.</p>
-      <NuxtLink to="/dashboard" class="btn-primary">Gerar Dieta</NuxtLink>
+  <div class="max-w-2xl mx-auto p-4">
+    <!-- Header -->
+    <div class="flex items-center gap-3 mb-6">
+      <NuxtLink to="/dashboard" class="text-zinc-500 hover:text-emerald-600 text-sm">
+        ← Voltar
+      </NuxtLink>
+      <h1 class="text-xl font-bold text-emerald-600">Check-in do Dia</h1>
     </div>
 
-    <!-- Com dieta ativa -->
-    <main v-else>
-      <div class="diet-info">
-        <h2>{{ activeDiet.title }}</h2>
-        <p>Marque as refeições que você seguiu hoje:</p>
-      </div>
+    <!-- Sem dieta -->
+    <UCard v-if="!activeDiet" class="text-center">
+      <p class="text-zinc-500 mb-4">Você ainda não tem uma dieta gerada.</p>
+      <UButton to="/dashboard" color="primary">Gerar Dieta</UButton>
+    </UCard>
 
-      <!-- Barra de progresso -->
-      <div class="progress-bar-container">
-        <div class="progress-bar" :style="{ width: `${adherencePercent}%` }"></div>
-        <span class="progress-text">{{ completedCount }}/{{ totalCount }} refeições ({{ adherencePercent }}%)</span>
-      </div>
+    <!-- Com dieta -->
+    <template v-else>
+      <!-- Info da dieta + barra de progresso -->
+      <UCard class="mb-4">
+        <div class="mb-3">
+          <h2 class="font-semibold text-zinc-800">{{ activeDiet.title }}</h2>
+          <p class="text-sm text-zinc-500">Marque cada refeição como "Comi" ou "Pulei"</p>
+        </div>
+
+        <!-- Barra de progresso -->
+        <div class="relative bg-zinc-200 rounded-lg h-8 overflow-hidden">
+          <div
+            class="h-full bg-emerald-500 rounded-lg transition-all duration-300"
+            :style="{ width: `${adherencePercent}%` }"
+          ></div>
+          <span class="absolute inset-0 flex items-center justify-center text-xs font-semibold text-zinc-700">
+            {{ completedCount }} comidas · {{ skippedCount }} puladas · {{ adherencePercent }}% aderência
+          </span>
+        </div>
+      </UCard>
+
+      <!-- Resumo de macros (aparece quando há dados adaptados) -->
+      <UCard v-if="checkinStore.summary" class="mb-4">
+        <div class="grid grid-cols-3 gap-4 text-center text-sm">
+          <div>
+            <p class="text-zinc-500">Consumido</p>
+            <p class="text-lg font-bold text-emerald-600">{{ formatMacro(checkinStore.summary.consumed.calories) }}</p>
+            <p class="text-xs text-zinc-400">kcal</p>
+          </div>
+          <div>
+            <p class="text-zinc-500">Restante</p>
+            <p class="text-lg font-bold text-amber-600">{{ formatMacro(checkinStore.summary.remaining.calories) }}</p>
+            <p class="text-xs text-zinc-400">kcal</p>
+          </div>
+          <div>
+            <p class="text-zinc-500">Meta do dia</p>
+            <p class="text-lg font-bold text-zinc-800">{{ formatMacro(checkinStore.summary.dailyTarget.calories) }}</p>
+            <p class="text-xs text-zinc-400">
+              kcal
+              <span v-if="checkinStore.summary.exerciseBonus > 0" class="text-emerald-500">
+                (+{{ formatMacro(checkinStore.summary.exerciseBonus) }} exercício)
+              </span>
+            </p>
+          </div>
+        </div>
+        <!-- Macros detalhados -->
+        <div class="grid grid-cols-3 gap-4 mt-3 pt-3 border-t border-zinc-100 text-center text-xs">
+          <div>
+            <span class="text-zinc-400">P: {{ formatMacro(checkinStore.summary.consumed.protein) }}g</span>
+            <span class="mx-1 text-zinc-300">·</span>
+            <span class="text-zinc-400">C: {{ formatMacro(checkinStore.summary.consumed.carbs) }}g</span>
+            <span class="mx-1 text-zinc-300">·</span>
+            <span class="text-zinc-400">G: {{ formatMacro(checkinStore.summary.consumed.fat) }}g</span>
+          </div>
+          <div>
+            <span class="text-zinc-400">P: {{ formatMacro(checkinStore.summary.remaining.protein) }}g</span>
+            <span class="mx-1 text-zinc-300">·</span>
+            <span class="text-zinc-400">C: {{ formatMacro(checkinStore.summary.remaining.carbs) }}g</span>
+            <span class="mx-1 text-zinc-300">·</span>
+            <span class="text-zinc-400">G: {{ formatMacro(checkinStore.summary.remaining.fat) }}g</span>
+          </div>
+          <div>
+            <span class="text-zinc-400">P: {{ formatMacro(checkinStore.summary.dailyTarget.protein) }}g</span>
+            <span class="mx-1 text-zinc-300">·</span>
+            <span class="text-zinc-400">C: {{ formatMacro(checkinStore.summary.dailyTarget.carbs) }}g</span>
+            <span class="mx-1 text-zinc-300">·</span>
+            <span class="text-zinc-400">G: {{ formatMacro(checkinStore.summary.dailyTarget.fat) }}g</span>
+          </div>
+        </div>
+      </UCard>
 
       <!-- Lista de refeições -->
-      <div class="meals-list">
-        <div
+      <div class="space-y-3 mb-4">
+        <UCard
           v-for="(meal, index) in mealStates"
           :key="meal.mealName"
-          class="meal-item"
-          :class="{ completed: meal.completed }"
+          :class="{
+            'border-emerald-400': meal.status === 'completed',
+            'border-zinc-300 opacity-60': meal.status === 'skipped',
+          }"
+          class="transition-all"
         >
-          <label class="meal-label">
-            <input
-              type="checkbox"
-              v-model="meal.completed"
-              class="meal-checkbox"
-            />
-            <div class="meal-info">
-              <span class="meal-name">{{ meal.mealName }}</span>
-              <span v-if="activeDiet.meals[index]" class="meal-time">
-                {{ activeDiet.meals[index].time }} · {{ activeDiet.meals[index].totalCalories }} kcal
-              </span>
+          <!-- Header da refeição -->
+          <div class="flex items-center justify-between">
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                <span class="font-semibold text-zinc-800">{{ meal.mealName }}</span>
+                <!-- Badge de adaptação -->
+                <UBadge
+                  v-if="getAdaptedMeal(meal.mealName)?.adapted"
+                  color="amber"
+                  variant="subtle"
+                  size="xs"
+                >
+                  Adaptado {{ scalePercent(getAdaptedMeal(meal.mealName)?.scaleFactor ?? 1) }}
+                </UBadge>
+                <UBadge v-if="meal.status === 'skipped'" color="zinc" variant="subtle" size="xs">
+                  Pulada
+                </UBadge>
+              </div>
+              <p class="text-sm text-zinc-500">
+                {{ activeDiet.meals[index]?.time }}
+                ·
+                <template v-if="getAdaptedMeal(meal.mealName)?.adapted">
+                  <span class="line-through text-zinc-400">{{ activeDiet.meals[index]?.totalCalories }}</span>
+                  <span class="font-semibold text-amber-600">
+                    {{ formatMacro(getAdaptedMeal(meal.mealName)?.totalCalories ?? 0) }}
+                  </span>
+                </template>
+                <template v-else-if="meal.status === 'skipped'">
+                  <span class="line-through">{{ activeDiet.meals[index]?.totalCalories }}</span>
+                  <span>0</span>
+                </template>
+                <template v-else>
+                  {{ activeDiet.meals[index]?.totalCalories }}
+                </template>
+                kcal
+                <!-- Macros por refeição -->
+                <span class="text-zinc-400 text-xs ml-1">
+                  P:{{ formatMacro(getMealMacros(meal.mealName, index).totalProtein) }}g
+                  C:{{ formatMacro(getMealMacros(meal.mealName, index).totalCarbs) }}g
+                  G:{{ formatMacro(getMealMacros(meal.mealName, index).totalFat) }}g
+                </span>
+              </p>
             </div>
-          </label>
 
-          <!-- Campo de notas (aparece ao expandir) -->
-          <input
-            type="text"
-            v-model="meal.notes"
-            placeholder="Notas (opcional)"
-            class="meal-notes"
-          />
-        </div>
+            <!-- Botões de ação -->
+            <div class="flex gap-1">
+              <UButton
+                :color="meal.status === 'completed' ? 'primary' : 'neutral'"
+                :variant="meal.status === 'completed' ? 'solid' : 'outline'"
+                size="xs"
+                @click="setMealStatus(meal.mealName, meal.status === 'completed' ? 'pending' : 'completed')"
+              >
+                Comi
+              </UButton>
+              <UButton
+                :color="meal.status === 'skipped' ? 'error' : 'neutral'"
+                :variant="meal.status === 'skipped' ? 'solid' : 'outline'"
+                size="xs"
+                @click="setMealStatus(meal.mealName, meal.status === 'skipped' ? 'pending' : 'skipped')"
+              >
+                Pulei
+              </UButton>
+            </div>
+          </div>
+
+          <!-- Alimentos (sempre visível) -->
+          <div class="mt-3 pt-3 border-t border-zinc-100">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-zinc-400 text-xs">
+                  <th class="text-left font-normal pb-1">Alimento</th>
+                  <th class="text-right font-normal pb-1">Qtd</th>
+                  <th class="text-right font-normal pb-1">Kcal</th>
+                  <th class="text-right font-normal pb-1">P</th>
+                  <th class="text-right font-normal pb-1">C</th>
+                  <th class="text-right font-normal pb-1">G</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="food in (getAdaptedMeal(meal.mealName)?.foods || activeDiet.meals[index]?.foods || [])"
+                  :key="food.name"
+                  class="text-zinc-700"
+                >
+                  <td class="py-0.5">{{ food.name }}</td>
+                  <td class="text-right py-0.5">
+                    <template v-if="food.originalQuantity && food.quantity !== food.originalQuantity">
+                      <span class="line-through text-zinc-400 text-xs mr-1">{{ food.originalQuantity }}</span>
+                      <span class="text-amber-600 font-medium">{{ food.quantity }}</span>
+                    </template>
+                    <template v-else>{{ food.quantity }}</template>
+                  </td>
+                  <td class="text-right py-0.5">{{ Math.round(food.calories) }}</td>
+                  <td class="text-right py-0.5 text-zinc-400">{{ Math.round(food.protein) }}</td>
+                  <td class="text-right py-0.5 text-zinc-400">{{ Math.round(food.carbs) }}</td>
+                  <td class="text-right py-0.5 text-zinc-400">{{ Math.round(food.fat) }}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- Notas (expand para mostrar) -->
+            <div
+              class="mt-2 cursor-pointer text-xs text-zinc-400 hover:text-zinc-600"
+              @click="toggleExpand(meal.mealName)"
+            >
+              {{ expandedMeal === meal.mealName ? '▲ Esconder notas' : '▼ Adicionar nota' }}
+            </div>
+            <UInput
+              v-if="expandedMeal === meal.mealName"
+              v-model="meal.notes"
+              placeholder="Notas (opcional)"
+              class="mt-1"
+              size="sm"
+            />
+          </div>
+        </UCard>
       </div>
+
+      <!-- Seção de exercício extra -->
+      <UCard class="mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="font-semibold text-zinc-800">Exercício Extra</h3>
+          <UButton
+            v-if="!showExerciseForm"
+            size="xs"
+            variant="outline"
+            @click="showExerciseForm = true"
+          >
+            + Adicionar
+          </UButton>
+        </div>
+
+        <!-- Exercícios já registrados hoje -->
+        <div v-if="checkinStore.todayCheckIn?.exercises?.length" class="space-y-1 mb-3">
+          <div
+            v-for="ex in checkinStore.todayCheckIn.exercises.filter(e => e.isExtra)"
+            :key="ex.exerciseName"
+            class="flex justify-between text-sm text-zinc-600"
+          >
+            <span>{{ ex.exerciseName }} ({{ ex.durationMinutes }}min)</span>
+            <span class="text-emerald-600 font-medium">+{{ Math.round(ex.caloriesBurned) }} kcal</span>
+          </div>
+        </div>
+
+        <!-- Formulário de exercício extra -->
+        <div v-if="showExerciseForm" class="space-y-2">
+          <!-- Busca de exercícios -->
+          <div class="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto border border-zinc-200 rounded-lg p-2">
+            <button
+              v-for="ex in exerciseStore.exercises.slice(0, 20)"
+              :key="ex.name"
+              class="text-left text-xs px-2 py-1 rounded hover:bg-emerald-50 transition-colors"
+              :class="extraExercise.exerciseName === ex.name ? 'bg-emerald-100 font-medium' : 'bg-zinc-50'"
+              @click="selectExercise(ex)"
+            >
+              {{ ex.name }}
+            </button>
+          </div>
+
+          <div v-if="extraExercise.exerciseName" class="flex gap-2 items-end">
+            <UFormField label="Duração (min)" class="flex-1">
+              <UInput v-model.number="extraExercise.durationMinutes" type="number" size="sm" />
+            </UFormField>
+            <UFormField label="Intensidade" class="flex-1">
+              <USelect
+                v-model="extraExercise.intensity"
+                :items="[
+                  { label: 'Leve', value: 'LIGHT' },
+                  { label: 'Moderada', value: 'MODERATE' },
+                  { label: 'Intensa', value: 'INTENSE' },
+                ]"
+                size="sm"
+              />
+            </UFormField>
+            <UButton color="primary" size="sm" @click="addExerciseAndSave">
+              Salvar
+            </UButton>
+          </div>
+
+          <UButton v-if="showExerciseForm" variant="ghost" size="xs" @click="showExerciseForm = false">
+            Cancelar
+          </UButton>
+        </div>
+
+        <p v-if="!checkinStore.todayCheckIn?.exercises?.length && !showExerciseForm" class="text-sm text-zinc-400">
+          Fez exercício extra hoje? Registre aqui para adaptar suas refeições.
+        </p>
+      </UCard>
 
       <!-- Mensagens -->
-      <div v-if="checkinStore.error" class="error-message">
-        {{ checkinStore.error }}
-      </div>
+      <UAlert v-if="checkinStore.error" color="error" :description="checkinStore.error" class="mb-3" />
+      <UAlert v-if="saved" color="success" description="Check-in salvo com sucesso!" class="mb-3" />
 
-      <div v-if="saved" class="success-message">
-        Check-in salvo com sucesso!
-      </div>
-
-      <!-- Botão salvar -->
-      <button
-        @click="handleSave"
-        :disabled="saving"
-        class="btn-primary btn-save"
+      <!-- Botão salvar manual -->
+      <UButton
+        block
+        color="primary"
+        size="lg"
+        :loading="saving"
+        @click="handleSave()"
       >
         {{ saving ? 'Salvando...' : 'Salvar Check-in' }}
-      </button>
-    </main>
+      </UButton>
+    </template>
   </div>
 </template>
-
-<style scoped>
-.checkin-page { max-width: 600px; margin: 0 auto; padding: 1rem; }
-
-.checkin-header {
-  padding: 1rem 0;
-  border-bottom: 1px solid #eee;
-  margin-bottom: 1.5rem;
-}
-.checkin-header h1 { font-size: 1.5rem; color: #10b981; margin-top: 0.5rem; }
-
-.back-link {
-  color: #666;
-  text-decoration: none;
-  font-size: 0.875rem;
-}
-.back-link:hover { color: #10b981; }
-
-.diet-info { margin-bottom: 1.5rem; }
-.diet-info h2 { font-size: 1.1rem; margin-bottom: 0.25rem; }
-.diet-info p { color: #666; font-size: 0.9rem; }
-
-.progress-bar-container {
-  background: #e5e7eb;
-  border-radius: 8px;
-  height: 32px;
-  position: relative;
-  margin-bottom: 1.5rem;
-  overflow: hidden;
-}
-
-.progress-bar {
-  height: 100%;
-  background: #10b981;
-  border-radius: 8px;
-  transition: width 0.3s ease;
-}
-
-.progress-text {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #333;
-}
-
-.meals-list { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem; }
-
-.meal-item {
-  padding: 1rem;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  transition: border-color 0.2s, background 0.2s;
-}
-.meal-item.completed {
-  border-color: #10b981;
-  background: #f0fdf4;
-}
-
-.meal-label {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  cursor: pointer;
-}
-
-.meal-checkbox {
-  width: 20px;
-  height: 20px;
-  accent-color: #10b981;
-  cursor: pointer;
-}
-
-.meal-info { display: flex; flex-direction: column; }
-.meal-name { font-weight: 600; font-size: 0.95rem; }
-.meal-time { font-size: 0.8rem; color: #999; }
-
-.meal-notes {
-  width: 100%;
-  margin-top: 0.5rem;
-  padding: 0.5rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  background: #fafafa;
-}
-.meal-notes:focus { outline: none; border-color: #10b981; }
-
-.btn-primary {
-  padding: 0.75rem 2rem;
-  background: #10b981;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  text-decoration: none;
-  display: inline-block;
-}
-.btn-primary:hover { background: #059669; }
-.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-
-.btn-save { width: 100%; padding: 1rem; font-size: 1.1rem; }
-
-.error-message {
-  padding: 0.75rem;
-  background: #fef2f2;
-  color: #dc2626;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  margin-bottom: 1rem;
-}
-
-.success-message {
-  padding: 0.75rem;
-  background: #f0fdf4;
-  color: #059669;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  margin-bottom: 1rem;
-  text-align: center;
-}
-
-.empty-state { text-align: center; padding: 3rem; color: #666; }
-.empty-state .btn-primary { margin-top: 1rem; }
-</style>

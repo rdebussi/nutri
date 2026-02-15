@@ -11,8 +11,12 @@ import { authMiddleware } from '../../shared/middleware/auth.middleware.js'
 // Todas são protegidas (precisa de autenticação).
 //
 // POST /check-ins       → criar/atualizar check-in do dia
-// GET  /check-ins       → buscar check-in de uma data
+// GET  /check-ins       → buscar check-in de uma data (com refeições adaptadas)
 // GET  /check-ins/stats → estatísticas semanais + streak
+//
+// FASE 3.3: As respostas de POST e GET agora incluem adaptedMeals e summary,
+// que mostram as refeições recalculadas quando o usuário pula refeições
+// ou faz exercícios extras.
 
 export async function checkinRoutes(
   app: FastifyInstance,
@@ -25,10 +29,11 @@ export async function checkinRoutes(
 
   // POST /api/v1/check-ins
   // Cria ou atualiza o check-in de um dia (upsert)
+  // Retorna: { checkIn, adaptedMeals, summary }
   app.post('/', async (request, reply) => {
     const input = createCheckInSchema.parse(request.body)
 
-    const checkIn = await checkinService.createOrUpdate(
+    const result = await checkinService.createOrUpdate(
       request.userId!,
       input.dietId,
       input.date,
@@ -36,20 +41,21 @@ export async function checkinRoutes(
       input.exercises,
     )
 
-    return reply.status(201).send({ success: true, data: checkIn })
+    return reply.status(201).send({ success: true, data: result })
   })
 
   // GET /api/v1/check-ins?date=YYYY-MM-DD
   // Busca check-in de uma data específica (default: hoje)
+  // Retorna: { checkIn, adaptedMeals, summary } ou null
   app.get('/', async (request) => {
     const query = dateQuerySchema.parse(request.query)
 
-    const checkIn = await checkinService.getByDate(
+    const result = await checkinService.getByDate(
       request.userId!,
       query.date,
     )
 
-    return { success: true, data: checkIn }
+    return { success: true, data: result }
   })
 
   // GET /api/v1/check-ins/stats

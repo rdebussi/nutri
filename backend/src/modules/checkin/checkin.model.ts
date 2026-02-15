@@ -14,10 +14,13 @@ import mongoose, { Schema, Document } from 'mongoose'
 //   1. Performance em buscas por usuário + data
 //   2. Unicidade — apenas um check-in por dia por usuário
 
+export type MealStatus = 'pending' | 'completed' | 'skipped'
+
 export interface IMealCheckIn {
   mealName: string
-  completed: boolean
+  status: MealStatus
   completedAt?: Date
+  skippedAt?: Date
   notes?: string
 }
 
@@ -43,8 +46,9 @@ export interface ICheckIn extends Document {
 
 const mealCheckInSchema = new Schema<IMealCheckIn>({
   mealName: { type: String, required: true },
-  completed: { type: Boolean, required: true, default: false },
+  status: { type: String, enum: ['pending', 'completed', 'skipped'], default: 'pending' },
   completedAt: { type: Date },
+  skippedAt: { type: Date },
   notes: { type: String, maxlength: 500 },
 }, { _id: false })
 

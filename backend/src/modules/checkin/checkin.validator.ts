@@ -18,7 +18,7 @@ const exerciseLogSchema = z.object({
 
 const mealCheckInSchema = z.object({
   mealName: z.string().min(1, 'Nome da refeição é obrigatório'),
-  completed: z.boolean(),
+  status: z.enum(['completed', 'skipped', 'pending']).default('pending'),
   notes: z.string().max(500, 'Notas devem ter no máximo 500 caracteres').optional(),
 })
 
