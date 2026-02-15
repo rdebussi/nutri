@@ -4,6 +4,7 @@ import helmet from '@fastify/helmet'
 import type { PrismaClient } from './generated/prisma/client.js'
 import { authRoutes } from './modules/auth/auth.routes.js'
 import { userRoutes } from './modules/user/user.routes.js'
+import { dietRoutes } from './modules/diet/diet.routes.js'
 import { errorHandler } from './shared/middleware/error-handler.js'
 
 // ====================================================
@@ -44,6 +45,7 @@ export function buildApp(opts: AppOptions = {}) {
   if (opts.prisma) {
     app.register(authRoutes, { prefix: '/api/v1/auth', prisma: opts.prisma })
     app.register(userRoutes, { prefix: '/api/v1/users', prisma: opts.prisma })
+    app.register(dietRoutes, { prefix: '/api/v1/diets', prisma: opts.prisma })
   }
 
   return app
