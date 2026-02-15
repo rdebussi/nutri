@@ -8,6 +8,14 @@ export default defineNuxtConfig({
     strict: true,
   },
 
+  devServer: {
+    port: 3001,
+  },
+
+  imports: {
+    dirs: ['stores', 'composables'],
+  },
+
   runtimeConfig: {
     public: {
       apiBase: 'http://localhost:3000/api/v1',

@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import type { PrismaClient } from '../../generated/prisma/client.js'
+import type { PrismaClient } from '@prisma/client'
 import type { RegisterInput, LoginInput } from './auth.validator.js'
 import type { AuthResponse, SafeUser } from './auth.types.js'
 import { ConflictError, UnauthorizedError } from '../../shared/utils/errors.js'

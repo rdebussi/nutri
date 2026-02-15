@@ -1,4 +1,4 @@
-import type { PrismaClient } from '../../generated/prisma/client.js'
+import type { PrismaClient } from '@prisma/client'
 import type { UpdateProfileInput } from './user.validator.js'
 import { NotFoundError } from '../../shared/utils/errors.js'
 

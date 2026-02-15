@@ -1,7 +1,7 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
-import type { PrismaClient } from './generated/prisma/client.js'
+import type { PrismaClient } from '@prisma/client'
 import { authRoutes } from './modules/auth/auth.routes.js'
 import { userRoutes } from './modules/user/user.routes.js'
 import { dietRoutes } from './modules/diet/diet.routes.js'

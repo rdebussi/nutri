@@ -1,4 +1,4 @@
-import type { PrismaClient } from '../../generated/prisma/client.js'
+import type { PrismaClient } from '@prisma/client'
 import type { AiService } from '../ai/ai.service.js'
 import { Diet } from './diet.model.js'
 import { AppError } from '../../shared/utils/errors.js'

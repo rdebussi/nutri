@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import type { PrismaClient } from '../../generated/prisma/client.js'
+import type { PrismaClient } from '@prisma/client'
 import { AuthService } from './auth.service.js'
 import { registerSchema, loginSchema } from './auth.validator.js'
 
