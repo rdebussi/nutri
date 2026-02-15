@@ -11,6 +11,13 @@
 // 4. Inclua RESTRIÇÕES: "sem glúten, max 2000kcal"
 // 5. Peça JSON VÁLIDO: a IA pode gerar JSON malformado se não for explícito
 
+export type ExerciseRoutineInfo = {
+  exerciseName: string
+  daysPerWeek: number
+  durationMinutes: number
+  intensity: string
+}
+
 export type DietPromptInput = {
   name: string
   weight?: number | null
@@ -20,6 +27,11 @@ export type DietPromptInput = {
   restrictions?: string[]
   gender?: string | null
   birthDate?: string | null
+  // Novos campos para TDEE preciso
+  tdee?: number | null
+  adjustedTdee?: number | null
+  bmr?: number | null
+  exerciseRoutine?: ExerciseRoutineInfo[]
 }
 
 // Mapa legível dos enums → a IA entende melhor texto natural
@@ -51,6 +63,16 @@ export function buildDietPrompt(input: DietPromptInput): string {
     input.restrictions?.length
       ? `Restrições alimentares: ${input.restrictions.join(', ')}`
       : null,
+    input.bmr ? `Taxa Metabólica Basal (TMB): ${input.bmr} kcal` : null,
+    input.tdee ? `Gasto Calórico Diário (TDEE): ${input.tdee} kcal` : null,
+    input.adjustedTdee
+      ? `Calorias Alvo (ajustado ao objetivo): ${input.adjustedTdee} kcal`
+      : null,
+    input.exerciseRoutine?.length
+      ? `Rotina de exercícios:\n${input.exerciseRoutine.map(
+          e => `  - ${e.exerciseName}: ${e.daysPerWeek}x/semana, ${e.durationMinutes}min, intensidade ${e.intensity.toLowerCase()}`,
+        ).join('\n')}`
+      : null,
   ]
     .filter(Boolean)
     .join('\n')
@@ -70,7 +92,8 @@ REGRAS:
 - Cada refeição deve ter entre 2 e 5 alimentos
 - Calcule calorias e macronutrientes (proteína, carboidratos, gordura) para CADA alimento
 - As quantidades devem ser práticas (ex: "1 fatia", "200ml", "100g")
-- Adapte as calorias totais ao objetivo e nível de atividade do paciente
+- Se "Calorias Alvo" foi informado, use esse valor como base para as calorias totais da dieta
+- Caso contrário, adapte as calorias ao objetivo e nível de atividade do paciente
 - Respeite TODAS as restrições alimentares
 - Inclua um título criativo para a dieta
 - Adicione observações/dicas personalizadas no campo notes

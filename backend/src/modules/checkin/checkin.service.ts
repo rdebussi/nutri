@@ -3,6 +3,7 @@ import type { ICheckIn } from './checkin.model.js'
 import { Diet } from '../diet/diet.model.js'
 import { AppError } from '../../shared/utils/errors.js'
 import { NotFoundError } from '../../shared/utils/errors.js'
+import { calculateExerciseCalories } from '../../shared/utils/tdee.js'
 
 // ====================================================
 // CHECK-IN SERVICE
@@ -45,6 +46,15 @@ export class CheckInService {
     dietId: string,
     date: string | undefined,
     meals: Array<{ mealName: string; completed: boolean; notes?: string }>,
+    exercises?: Array<{
+      exerciseName: string
+      category: string
+      met: number
+      durationMinutes: number
+      intensity?: string
+      isExtra?: boolean
+    }>,
+    weightKg?: number,
   ): Promise<ICheckIn> {
     // Verifica se a dieta existe e pertence ao usuário
     const diet = await Diet.findById(dietId).lean()
@@ -64,12 +74,30 @@ export class CheckInService {
       completedAt: meal.completed ? new Date() : undefined,
     }))
 
+    // Calcula calorias queimadas por exercício
+    const exerciseLogs = (exercises || []).map(ex => ({
+      exerciseName: ex.exerciseName,
+      category: ex.category,
+      durationMinutes: ex.durationMinutes,
+      isExtra: ex.isExtra ?? false,
+      caloriesBurned: calculateExerciseCalories({
+        met: ex.met,
+        weightKg: weightKg || 70, // fallback 70kg se não informado
+        durationMinutes: ex.durationMinutes,
+        intensity: ex.intensity,
+      }),
+    }))
+
+    const totalCaloriesBurned = exerciseLogs.reduce((sum, e) => sum + e.caloriesBurned, 0)
+
     const checkIn = await CheckIn.findOneAndUpdate(
       { userId, date: normalizedDate },
       {
         dietId,
         meals: mealsWithTimestamp,
         adherenceRate,
+        exercises: exerciseLogs,
+        totalCaloriesBurned,
       },
       { upsert: true, new: true, runValidators: true },
     )

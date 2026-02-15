@@ -1,7 +1,9 @@
 import type { PrismaClient } from '@prisma/client'
 import type { AiService } from '../ai/ai.service.js'
+import type { ExerciseRoutineInfo } from '../ai/ai.prompts.js'
 import { Diet } from './diet.model.js'
 import { AppError } from '../../shared/utils/errors.js'
+import { calculateBMR, calculateWeeklyAvgTDEE, adjustForGoal } from '../../shared/utils/tdee.js'
 
 // ====================================================
 // DIET SERVICE
@@ -42,21 +44,72 @@ export class DietService {
     // 2. Verifica limites de geração
     await this.checkGenerationLimit(userId, user.role)
 
-    // 3. Monta os dados para o prompt
-    const promptInput = {
-      name: user.name,
-      weight: user.profile?.weight,
-      height: user.profile?.height,
-      goal: user.profile?.goal,
-      activityLevel: user.profile?.activityLevel,
-      restrictions: user.profile?.restrictions,
-      gender: user.profile?.gender,
+    // 3. Calcula TDEE se o perfil tem dados suficientes
+    let bmr: number | null = null
+    let tdee: number | null = null
+    let adjustedTdee: number | null = null
+    let exerciseRoutine: ExerciseRoutineInfo[] = []
+
+    const profile = user.profile
+    if (profile?.weight && profile?.height && profile?.birthDate && profile?.gender) {
+      const age = Math.floor(
+        (Date.now() - new Date(profile.birthDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000),
+      )
+
+      const routines = await this.prisma.exerciseRoutine.findMany({
+        where: { profileId: profile.id },
+      })
+
+      bmr = Math.round(calculateBMR({
+        weight: profile.weight,
+        height: profile.height,
+        age,
+        gender: profile.gender,
+      }))
+
+      tdee = calculateWeeklyAvgTDEE({
+        weight: profile.weight,
+        height: profile.height,
+        age,
+        gender: profile.gender,
+        routines: routines.map(r => ({
+          met: r.met,
+          daysPerWeek: r.daysPerWeek,
+          durationMinutes: r.durationMinutes,
+          intensity: r.intensity,
+        })),
+      })
+
+      const goal = profile.goal || 'MAINTAIN'
+      adjustedTdee = adjustForGoal(tdee, goal)
+
+      exerciseRoutine = routines.map(r => ({
+        exerciseName: r.exerciseName,
+        daysPerWeek: r.daysPerWeek,
+        durationMinutes: r.durationMinutes,
+        intensity: r.intensity,
+      }))
     }
 
-    // 4. Chama a IA para gerar a dieta
+    // 4. Monta os dados para o prompt (agora com TDEE)
+    const promptInput = {
+      name: user.name,
+      weight: profile?.weight,
+      height: profile?.height,
+      goal: profile?.goal,
+      activityLevel: profile?.activityLevel,
+      restrictions: profile?.restrictions,
+      gender: profile?.gender,
+      bmr,
+      tdee,
+      adjustedTdee,
+      exerciseRoutine,
+    }
+
+    // 5. Chama a IA para gerar a dieta
     const generated = await this.aiService.generateDiet(promptInput)
 
-    // 5. Salva no MongoDB
+    // 6. Salva no MongoDB
     const diet = await Diet.create({
       userId,
       ...generated,

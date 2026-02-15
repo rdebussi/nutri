@@ -33,6 +33,7 @@ export async function checkinRoutes(
       input.dietId,
       input.date,
       input.meals,
+      input.exercises,
     )
 
     return reply.status(201).send({ success: true, data: checkIn })

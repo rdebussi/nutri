@@ -2,7 +2,15 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-01-01',
   devtools: { enabled: true },
 
-  modules: ['@pinia/nuxt'],
+  modules: ['@nuxt/ui', '@pinia/nuxt'],
+
+  css: ['~/assets/css/main.css'],
+
+  // Força light mode — sem dark mode automático
+  colorMode: {
+    preference: 'light',
+    fallback: 'light',
+  },
 
   typescript: {
     strict: true,

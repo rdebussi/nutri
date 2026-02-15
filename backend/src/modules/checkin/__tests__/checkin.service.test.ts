@@ -141,6 +141,57 @@ describe('CheckInService', () => {
       expect(dateUsed.getMonth()).toBe(today.getMonth())
     })
 
+    it('should calculate exercise calories and include in check-in', async () => {
+      ;(Diet.findById as any).mockReturnValue({ lean: vi.fn().mockResolvedValue({ _id: dietId, userId }) })
+      ;(CheckIn.findOneAndUpdate as any).mockResolvedValue({})
+
+      const exercises = [
+        { exerciseName: 'Corrida', category: 'cardio', met: 8.0, durationMinutes: 60, isExtra: true },
+      ]
+
+      await service.createOrUpdate(userId, dietId, '2026-02-15', meals, exercises, 70)
+
+      const call = (CheckIn.findOneAndUpdate as any).mock.calls[0]
+      const data = call[1]
+      expect(data.exercises).toHaveLength(1)
+      expect(data.exercises[0].caloriesBurned).toBe(560) // 8.0 × 70 × 1h
+      expect(data.exercises[0].isExtra).toBe(true)
+      expect(data.totalCaloriesBurned).toBe(560)
+    })
+
+    it('should handle multiple exercises in check-in', async () => {
+      ;(Diet.findById as any).mockReturnValue({ lean: vi.fn().mockResolvedValue({ _id: dietId, userId }) })
+      ;(CheckIn.findOneAndUpdate as any).mockResolvedValue({})
+
+      const exercises = [
+        { exerciseName: 'Musculação', category: 'strength', met: 6.0, durationMinutes: 60 },
+        { exerciseName: 'Corrida', category: 'cardio', met: 8.0, durationMinutes: 30, isExtra: true },
+      ]
+
+      await service.createOrUpdate(userId, dietId, '2026-02-15', meals, exercises, 80)
+
+      const call = (CheckIn.findOneAndUpdate as any).mock.calls[0]
+      const data = call[1]
+      expect(data.exercises).toHaveLength(2)
+      // Musculação: 6.0 × 80 × 1h = 480
+      expect(data.exercises[0].caloriesBurned).toBe(480)
+      // Corrida: 8.0 × 80 × 0.5h = 320
+      expect(data.exercises[1].caloriesBurned).toBe(320)
+      expect(data.totalCaloriesBurned).toBe(800)
+    })
+
+    it('should default to empty exercises when not provided', async () => {
+      ;(Diet.findById as any).mockReturnValue({ lean: vi.fn().mockResolvedValue({ _id: dietId, userId }) })
+      ;(CheckIn.findOneAndUpdate as any).mockResolvedValue({})
+
+      await service.createOrUpdate(userId, dietId, '2026-02-15', meals)
+
+      const call = (CheckIn.findOneAndUpdate as any).mock.calls[0]
+      const data = call[1]
+      expect(data.exercises).toEqual([])
+      expect(data.totalCaloriesBurned).toBe(0)
+    })
+
     it('should add completedAt for completed meals', async () => {
       ;(Diet.findById as any).mockReturnValue({ lean: vi.fn().mockResolvedValue({ _id: dietId, userId }) })
       ;(CheckIn.findOneAndUpdate as any).mockResolvedValue({})

@@ -6,6 +6,7 @@ import { authRoutes } from './modules/auth/auth.routes.js'
 import { userRoutes } from './modules/user/user.routes.js'
 import { dietRoutes } from './modules/diet/diet.routes.js'
 import { checkinRoutes } from './modules/checkin/checkin.routes.js'
+import { exerciseRoutes } from './modules/exercise/exercise.routes.js'
 import { errorHandler } from './shared/middleware/error-handler.js'
 
 // ====================================================
@@ -28,8 +29,25 @@ export function buildApp(opts: AppOptions = {}) {
   })
 
   // Plugins de segurança
-  app.register(cors)
-  app.register(helmet)
+  // CORS: precisamos declarar os métodos explicitamente porque
+  // o @fastify/cors v11+ usa strictPreflight por padrão, que
+  // tenta auto-detectar métodos por rota. Porém, rotas em plugins
+  // filhos (app.register com prefix) não são visíveis no escopo raiz,
+  // então o preflight retornaria apenas GET,HEAD,POST — bloqueando PUT/PATCH/DELETE.
+  app.register(cors, {
+    origin: true,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
+    strictPreflight: false,
+  })
+  // Helmet: headers de segurança. Os defaults são pensados para sites
+  // que servem HTML. Como somos uma API consumida por outro domínio,
+  // relaxamos crossOriginResourcePolicy (que bloqueia respostas cross-origin)
+  // e crossOriginOpenerPolicy (irrelevante para APIs).
+  app.register(helmet, {
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginOpenerPolicy: false,
+    contentSecurityPolicy: false,
+  })
 
   // Error handler global — captura todos os erros
   app.setErrorHandler(errorHandler)
@@ -49,6 +67,9 @@ export function buildApp(opts: AppOptions = {}) {
     app.register(dietRoutes, { prefix: '/api/v1/diets', prisma: opts.prisma })
     app.register(checkinRoutes, { prefix: '/api/v1/check-ins', prisma: opts.prisma })
   }
+
+  // Exercícios — rota PÚBLICA (não depende de Prisma, usa MongoDB)
+  app.register(exerciseRoutes, { prefix: '/api/v1/exercises' })
 
   return app
 }

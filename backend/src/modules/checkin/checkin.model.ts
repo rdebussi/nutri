@@ -21,12 +21,22 @@ export interface IMealCheckIn {
   notes?: string
 }
 
+export interface IExerciseLog {
+  exerciseName: string
+  category: string
+  durationMinutes: number
+  caloriesBurned: number
+  isExtra: boolean  // true = exercício avulso (fora da rotina)
+}
+
 export interface ICheckIn extends Document {
   userId: string
   dietId: string
   date: Date
   meals: IMealCheckIn[]
+  exercises: IExerciseLog[]
   adherenceRate: number
+  totalCaloriesBurned: number
   createdAt: Date
   updatedAt: Date
 }
@@ -38,12 +48,22 @@ const mealCheckInSchema = new Schema<IMealCheckIn>({
   notes: { type: String, maxlength: 500 },
 }, { _id: false })
 
+const exerciseLogSchema = new Schema<IExerciseLog>({
+  exerciseName: { type: String, required: true },
+  category: { type: String, required: true },
+  durationMinutes: { type: Number, required: true, min: 1 },
+  caloriesBurned: { type: Number, required: true, min: 0 },
+  isExtra: { type: Boolean, required: true, default: false },
+}, { _id: false })
+
 const checkInSchema = new Schema<ICheckIn>({
   userId: { type: String, required: true, index: true },
   dietId: { type: String, required: true },
   date: { type: Date, required: true },
   meals: { type: [mealCheckInSchema], required: true },
+  exercises: { type: [exerciseLogSchema], default: [] },
   adherenceRate: { type: Number, required: true, min: 0, max: 100 },
+  totalCaloriesBurned: { type: Number, default: 0 },
 }, { timestamps: true })
 
 // Índice composto: garante um check-in por dia por usuário

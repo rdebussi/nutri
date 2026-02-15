@@ -1,62 +1,144 @@
 # Nutri - Roadmap
 
-## Fase 0: Fundação (ATUAL)
+## Fase 0: Fundação ✅
 - [x] Definir stack tecnológica
 - [x] Criar estrutura de documentação
 - [x] Configurar agentes especializados
-- [ ] Inicializar repositório Git
-- [ ] Setup do backend (Node + TypeScript + testes)
-- [ ] Setup do frontend (Nuxt 3 + Pinia + testes)
-- [ ] Configurar CI básico (lint + testes)
+- [x] Inicializar repositório Git
+- [x] Setup do backend (Fastify + TypeScript + Vitest)
+- [x] Setup do frontend (Nuxt 3 + Pinia + Vitest)
 
-## Fase 1: Core MVP - Autenticação & Perfil
+## Fase 1: Core MVP - Autenticação & Perfil ✅
 **Objetivo:** Usuário consegue criar conta, fazer login e preencher seu perfil nutricional.
 
 ### Backend
-- [ ] Setup Express/Fastify com TypeScript
-- [ ] Configurar PostgreSQL (usuários, perfis)
-- [ ] Autenticação JWT (register, login, refresh token)
-- [ ] CRUD de perfil do usuário (peso, altura, objetivo, restrições)
-- [ ] Validação de inputs com Zod
-- [ ] Rate limiting básico com Redis
-- [ ] Testes unitários e de integração
+- [x] Fastify com TypeScript
+- [x] PostgreSQL com Prisma (usuários, perfis)
+- [x] Autenticação JWT (register, login, refresh token)
+- [x] CRUD de perfil do usuário (peso, altura, objetivo, restrições)
+- [x] Validação de inputs com Zod
+- [x] Testes unitários e de integração
 
 ### Frontend
-- [ ] Páginas: Landing, Login, Register, Dashboard
-- [ ] Formulário de perfil nutricional
-- [ ] Autenticação (store Pinia + middleware Nuxt)
-- [ ] Testes de componentes
+- [x] Páginas: Landing, Login, Register, Dashboard
+- [x] Página de perfil nutricional (/profile) com Nuxt UI
+- [x] Autenticação (store Pinia + middleware Nuxt)
+- [x] Nuxt UI (componentes + Tailwind CSS) — light mode forçado
+- [x] Testes de stores
 
-## Fase 2: Geração de Dietas com IA
+## Fase 2: Geração de Dietas com IA ✅
 **Objetivo:** Usuário gera uma dieta personalizada baseada no seu perfil.
 
 ### Backend
-- [ ] Integração com OpenAI API
-- [ ] Prompt engineering para geração de dietas
+- [x] Integração com OpenAI API + MockAiService para dev
+- [x] Prompt engineering para geração de dietas
+- [x] Limites de geração por plano (FREE=3/mês, PRO=ilimitado)
+- [x] Salvar dietas geradas no MongoDB (Mongoose)
+- [x] Endpoints: gerar dieta, listar dietas, ver dieta
 - [ ] Cache de respostas no Redis
-- [ ] Limites de geração por usuário
-- [ ] Salvar dietas geradas no MongoDB
-- [ ] Endpoints: gerar dieta, listar dietas, ver dieta
 
 ### Frontend
-- [ ] Tela de geração de dieta (com loading/streaming)
-- [ ] Visualização da dieta gerada (refeições, macros, calorias)
-- [ ] Histórico de dietas
-- [ ] Testes
+- [x] Tela de geração de dieta com loading
+- [x] Visualização da dieta gerada (refeições, macros, calorias)
+- [x] Histórico de dietas
+- [x] Testes
 
-## Fase 3: Acompanhamento & Engajamento
-**Objetivo:** Usuário acompanha sua dieta no dia a dia.
+## Fase 3: Acompanhamento & Engajamento (ATUAL)
+**Objetivo:** Usuário acompanha e adapta sua dieta no dia a dia com precisão.
 
-- [ ] Check-in diário (comeu/não comeu cada refeição)
-- [ ] Dashboard com progresso semanal
-- [ ] Notificações/lembretes
-- [ ] Ajuste de dieta baseado no feedback
+### 3.1 Check-in Diário ✅
+- [x] Check-in diário (comeu/não comeu cada refeição)
+- [x] Dashboard com progresso semanal
+- [x] Streak de dias consecutivos
+- [x] Testes backend (27) + frontend (6)
+
+### 3.2 Registro de Exercícios & Gasto Calórico ✅
+**Objetivo:** Dietas consideram o gasto calórico real (TMB + exercícios), não só a TMB.
+
+- [x] Base de dados de exercícios com gasto calórico pré-calculado
+  - 30 exercícios com MET (seed idempotente via MongoDB)
+  - Categorias: strength, cardio, sports, flexibility, daily
+  - Busca por nome + filtro por categoria (GET /exercises)
+- [x] Calculadora TDEE (Mifflin-St Jeor + MET por exercício)
+  - TMB, gasto por exercício, média semanal, ajuste por objetivo
+  - Campo activityLevel removido (redundante com rotina real)
+- [x] Rotina semanal de exercícios no perfil do usuário
+  - CRUD completo (GET/PUT /users/me/routines)
+  - Estratégia "replace all" com transação Prisma
+  - Cálculo automático do TDEE (GET /users/me/tdee)
+- [x] Registro de exercícios avulsos no check-in
+  - Exercício extra com cálculo de calorias por MET
+  - Campo totalCaloriesBurned no check-in
+- [x] Integração com o prompt da IA
+  - TMB, TDEE e Calorias Alvo no prompt de geração
+  - Rotina de exercícios detalhada no contexto da IA
+- [x] Frontend: página /profile/exercises + TDEE no dashboard
+- [x] Testes: 86 backend + 24 frontend = 110 total
+
+### 3.3 Refeições Adaptativas
+**Objetivo:** A dieta se adapta ao longo do dia conforme o que o usuário realmente come.
+
+- [ ] Pular refeição
+  - Opção "pular" no check-in (ex: acordou tarde, pulou café da manhã)
+  - Redistribui as calorias/macros da refeição pulada nas refeições seguintes
+  - Recalcula automaticamente as quantidades dos alimentos
+- [ ] Editar refeição
+  - Trocar alimento por outro (ex: sonho ao invés de pão com ovo)
+  - Recalcula o restante do dia para bater os macros diários
+  - Usa a base de dados de alimentos para buscar valores nutricionais
+- [ ] Exercício avulso impacta as refeições
+  - Se o usuário fez exercício extra, as calorias do dia aumentam
+  - Refeições seguintes se adaptam para compensar o gasto
+- [ ] Recálculo em cascata
+  - Motor de recálculo que recebe: macros target do dia, o que já foi consumido, o que falta
+  - Redistribui proporcionalmente entre as refeições restantes
+
+### 3.4 Mapeamento de Alimentos
+**Objetivo:** Base de dados nutricional para troca e edição inteligente de alimentos.
+
+- [ ] Base de dados de alimentos com valores nutricionais
+  - Calorias, proteína, carboidratos, gordura por 100g
+  - Categorias: grãos, proteínas, laticínios, frutas, vegetais, etc.
+  - Fonte: TACO (Tabela Brasileira de Composição de Alimentos) ou similar
+- [ ] Busca de alimentos com autocomplete
+  - Busca por nome no frontend com resultados em tempo real
+  - Filtros por categoria
+- [ ] Troca inteligente de alimentos na dieta
+  - Usuário seleciona "trocar macarrão por arroz"
+  - Sistema calcula a quantidade de arroz equivalente em macros
+  - Recalcula o restante da refeição e do dia
+- [ ] Sugestões de substituição
+  - Ao trocar um alimento, sugerir equivalentes (mesma categoria, macros similares)
+  - Ex: trocar frango → sugerir peixe, carne magra, tofu
+
+### 3.5 Micronutrientes
+**Objetivo:** Dietas consideram vitaminas e minerais, não só macronutrientes.
+
+- [ ] Adicionar micronutrientes ao prompt da IA
+  - Vitaminas: A, B (complexo), C, D, E, K
+  - Minerais: ferro, cálcio, magnésio, zinco, potássio
+  - Instrução no prompt: balancear micros conforme RDA (Recommended Daily Allowance)
+- [ ] Exibir micronutrientes na visualização da dieta
+  - Tabela ou gráfico com % da RDA atingida
+  - Alertas quando algum micro está abaixo de 70%
+- [ ] Formulário de preferências do usuário (futuro)
+  - Alimentos que gosta / não gosta
+  - Alergias e intolerâncias detalhadas
+  - Preferências de culinária (cozinha brasileira, japonesa, etc.)
+  - Horários de refeição preferidos
+  - UX intuitiva e progressiva (não sobrecarregar no onboarding)
+
+### 3.6 Notificações & Lembretes
+- [ ] Lembrete visual no dashboard (horário da próxima refeição)
+- [ ] Notificações push (futuro — depende de service worker ou app mobile)
+
+---
 
 ## Fase 4: Monetização
 **Objetivo:** Modelo freemium com Stripe.
 
 - [ ] Integração Stripe (checkout, webhooks)
-- [ ] Planos: Free (1 dieta/mês), Pro (ilimitado + features extras)
+- [ ] Planos: Free (3 dietas/mês), Pro (ilimitado + features extras)
 - [ ] Portal do cliente Stripe
 - [ ] Controle de acesso por plano
 
@@ -72,9 +154,9 @@
 ## Métricas de Sucesso por Fase
 | Fase | Critério de Conclusão |
 |------|----------------------|
-| 0 | Projeto roda localmente com testes passando |
-| 1 | Usuário cria conta e preenche perfil |
-| 2 | Dieta gerada pela IA e exibida na tela |
-| 3 | Usuário acompanha dieta por 1 semana |
+| 0 | Projeto roda localmente com testes passando ✅ |
+| 1 | Usuário cria conta e preenche perfil ✅ |
+| 2 | Dieta gerada pela IA e exibida na tela ✅ |
+| 3 | Usuário acompanha dieta, troca alimentos, registra exercícios e vê micros |
 | 4 | Pagamento funcional end-to-end |
 | 5 | App publicado nas stores |

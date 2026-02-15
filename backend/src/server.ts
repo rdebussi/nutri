@@ -2,6 +2,7 @@ import mongoose from 'mongoose'
 import { buildApp } from './app.js'
 import { env } from './config/env.js'
 import { getPrisma } from './shared/database/prisma.js'
+import { seedExercises } from './modules/exercise/exercise.seed.js'
 
 // ====================================================
 // SERVER STARTUP
@@ -17,6 +18,10 @@ async function start() {
   try {
     await mongoose.connect(env.MONGODB_URI)
     app.log.info(`MongoDB connected: ${env.MONGODB_URI}`)
+
+    // Seed idempotente — popula a base de exercícios se ainda não existir
+    const seeded = await seedExercises()
+    app.log.info(`Exercise seed: ${seeded} exercises checked`)
   } catch (err) {
     app.log.error(err, 'Failed to connect to MongoDB')
     process.exit(1)

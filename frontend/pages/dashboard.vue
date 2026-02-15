@@ -15,6 +15,7 @@ definePageMeta({
 const authStore = useAuthStore()
 const dietStore = useDietStore()
 const checkinStore = useCheckinStore()
+const exerciseStore = useExerciseStore()
 const router = useRouter()
 
 // onMounted = roda quando a página aparece na tela.
@@ -24,6 +25,7 @@ onMounted(async () => {
     authStore.user ? Promise.resolve() : authStore.fetchUser(),
     dietStore.fetchAll(),
     checkinStore.fetchToday(),
+    exerciseStore.fetchTDEE(),
   ])
 })
 
@@ -44,7 +46,7 @@ async function handleGenerate() {
     <header class="dashboard-header">
       <h1>Nutri</h1>
       <div class="header-actions">
-        <span v-if="authStore.user" class="user-name">{{ authStore.user.name }}</span>
+        <NuxtLink v-if="authStore.user" to="/profile" class="user-name">{{ authStore.user.name }}</NuxtLink>
         <button @click="authStore.logout()" class="btn-outline">Sair</button>
       </div>
     </header>
@@ -69,6 +71,23 @@ async function handleGenerate() {
       <!-- Progresso semanal -->
       <section v-if="dietStore.diets.length" class="progress-section">
         <WeeklyProgress />
+      </section>
+
+      <!-- TDEE e Exercícios -->
+      <section class="exercise-section">
+        <div class="exercise-header">
+          <div>
+            <h2>Exercícios & TDEE</h2>
+            <p v-if="exerciseStore.tdee">
+              Gasto diário: <strong>{{ Math.round(exerciseStore.tdee.tdee).toLocaleString('pt-BR') }} kcal</strong>
+              · Alvo: <strong>{{ Math.round(exerciseStore.tdee.adjustedTdee).toLocaleString('pt-BR') }} kcal</strong>
+            </p>
+            <p v-else>Configure sua rotina para um cálculo preciso de calorias</p>
+          </div>
+          <NuxtLink to="/profile/exercises" class="btn-checkin">
+            Configurar Rotina
+          </NuxtLink>
+        </div>
       </section>
 
       <!-- Seção de geração -->
@@ -138,7 +157,8 @@ async function handleGenerate() {
 .dashboard-header h1 { color: #10b981; font-size: 1.5rem; }
 
 .header-actions { display: flex; align-items: center; gap: 1rem; }
-.user-name { font-size: 0.875rem; color: #666; }
+.user-name { font-size: 0.875rem; color: #666; text-decoration: none; }
+.user-name:hover { color: #10b981; }
 
 .btn-outline {
   padding: 0.5rem 1rem;
@@ -241,4 +261,19 @@ async function handleGenerate() {
 .btn-checkin:hover { background: #059669; }
 
 .progress-section { margin-bottom: 2rem; }
+
+.exercise-section {
+  padding: 1.25rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  margin-bottom: 2rem;
+}
+.exercise-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.exercise-header h2 { font-size: 1.1rem; margin-bottom: 0.25rem; }
+.exercise-header p { color: #666; font-size: 0.9rem; margin: 0; }
 </style>

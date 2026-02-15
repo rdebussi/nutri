@@ -73,7 +73,8 @@ model NutritionProfile {
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  routines  ExerciseRoutine[]
 
   @@map("nutrition_profiles")
 }
@@ -97,4 +98,36 @@ enum ActivityLevel {
   MODERATE
   ACTIVE
   VERY_ACTIVE
+}
+
+// ============================================
+// MODEL: ExerciseRoutine
+// ============================================
+// Rotina semanal de exercícios do usuário.
+// Cada registro é um exercício que o usuário faz
+// regularmente (ex: musculação 4x/semana, 60min).
+// Esses dados são usados para calcular o TDEE real
+// e gerar dietas mais precisas.
+
+model ExerciseRoutine {
+  id              String    @id @default(uuid())
+  profileId       String    @map("profile_id")
+  exerciseName    String    @map("exercise_name")
+  category        String
+  met             Float
+  daysPerWeek     Int       @map("days_per_week")
+  durationMinutes Int       @map("duration_minutes")
+  intensity       Intensity @default(MODERATE)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  profile NutritionProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("exercise_routines")
+}
+
+enum Intensity {
+  LIGHT
+  MODERATE
+  INTENSE
 }
