@@ -4,6 +4,7 @@ import { DietService } from './diet.service.js'
 import { AiService } from '../ai/ai.service.js'
 import { MockAiService } from '../ai/ai.mock.js'
 import { authMiddleware } from '../../shared/middleware/auth.middleware.js'
+import { AppError } from '../../shared/utils/errors.js'
 
 // ====================================================
 // DIET ROUTES
@@ -58,5 +59,47 @@ export async function dietRoutes(
   app.get<{ Params: { id: string } }>('/:id', async (request) => {
     const diet = await dietService.getById(request.params.id, request.userId!)
     return { success: true, data: diet }
+  })
+
+  // PATCH /api/v1/diets/:id/meals/:mealIndex/foods/:foodIndex/swap
+  // Troca um alimento na dieta por outro da base TACO.
+  // Calcula quantidade equivalente em calorias e recalcula todos os totais.
+  app.patch<{
+    Params: { id: string; mealIndex: string; foodIndex: string }
+    Body: { newFoodId: string }
+  }>('/:id/meals/:mealIndex/foods/:foodIndex/swap', async (request) => {
+    const { id, mealIndex, foodIndex } = request.params
+    const { newFoodId } = request.body as { newFoodId: string }
+
+    if (!newFoodId) {
+      throw new AppError('newFoodId é obrigatório', 400)
+    }
+
+    const diet = await dietService.swapFood(
+      id,
+      request.userId!,
+      Number(mealIndex),
+      Number(foodIndex),
+      newFoodId,
+    )
+
+    return { success: true, data: diet }
+  })
+
+  // POST /api/v1/diets/:id/meals/:mealIndex/refresh
+  // Regenera uma refeição com IA: mesmas calorias, ingredientes diferentes.
+  // Controla limites: FREE=2/dia, PRO=10/dia, ADMIN=ilimitado.
+  app.post<{
+    Params: { id: string; mealIndex: string }
+  }>('/:id/meals/:mealIndex/refresh', async (request) => {
+    const { id, mealIndex } = request.params
+
+    const result = await dietService.refreshMeal(
+      id,
+      request.userId!,
+      Number(mealIndex),
+    )
+
+    return { success: true, data: result }
   })
 }

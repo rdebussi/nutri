@@ -7,6 +7,7 @@ import { userRoutes } from './modules/user/user.routes.js'
 import { dietRoutes } from './modules/diet/diet.routes.js'
 import { checkinRoutes } from './modules/checkin/checkin.routes.js'
 import { exerciseRoutes } from './modules/exercise/exercise.routes.js'
+import { foodRoutes } from './modules/food/food.routes.js'
 import { errorHandler } from './shared/middleware/error-handler.js'
 
 // ====================================================
@@ -26,6 +27,23 @@ type AppOptions = {
 export function buildApp(opts: AppOptions = {}) {
   const app = Fastify({
     logger: true,
+  })
+
+  // Customiza o parser JSON para aceitar body vazio.
+  // O $fetch (ofetch) do Nuxt envia Content-Type: application/json por padrão em POST,
+  // mesmo quando não há body — sem isso, o Fastify rejeita com FST_ERR_CTP_EMPTY_JSON_BODY.
+  // Solução: remove o parser padrão e adiciona um que trata body vazio como null.
+  app.removeContentTypeParser('application/json')
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    if (!body || (typeof body === 'string' && body.trim() === '')) {
+      done(null, null)
+      return
+    }
+    try {
+      done(null, JSON.parse(body as string))
+    } catch (err) {
+      done(err as Error, undefined)
+    }
   })
 
   // Plugins de segurança
@@ -68,8 +86,9 @@ export function buildApp(opts: AppOptions = {}) {
     app.register(checkinRoutes, { prefix: '/api/v1/check-ins', prisma: opts.prisma })
   }
 
-  // Exercícios — rota PÚBLICA (não depende de Prisma, usa MongoDB)
+  // Rotas PÚBLICAS (não dependem de Prisma, usam MongoDB)
   app.register(exerciseRoutes, { prefix: '/api/v1/exercises' })
+  app.register(foodRoutes, { prefix: '/api/v1/foods' })
 
   return app
 }

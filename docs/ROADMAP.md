@@ -101,8 +101,10 @@
   - API retorna adaptedMeals + summary em POST e GET /check-ins
   - Summary: consumed, remaining, dailyTarget, exerciseBonus
   - Cada refeição adaptada mostra scaleFactor e quantidades originais
-- [ ] Editar refeição (adiado para 3.4 — depende da base de alimentos)
-  - Trocar alimento por outro com recálculo automático
+- [x] Troca de alimento no check-in (não altera a dieta base)
+  - foodOverrides no check-in: snapshot do original + alimento substituto
+  - applyFoodOverrides(): função pura que aplica overrides sem mutar o original
+  - PATCH /check-ins/foods/swap → salva no check-in, roda adaptação com overrides
 - [x] Frontend: redesign completo da página /check-in
   - Cards expandíveis com detalhes dos alimentos (nome, qtd, macros)
   - Botões "Comi"/"Pulei" por refeição com auto-save
@@ -112,23 +114,59 @@
   - Seção de exercício extra com seleção e registro
 - [x] Testes: 115 backend + 26 frontend = 141 total
 
-### 3.4 Mapeamento de Alimentos
+### 3.4 Mapeamento de Alimentos ✅
 **Objetivo:** Base de dados nutricional para troca e edição inteligente de alimentos.
 
-- [ ] Base de dados de alimentos com valores nutricionais
+- [x] Base de dados de alimentos com valores nutricionais
+  - ~100 alimentos brasileiros baseados na tabela TACO
   - Calorias, proteína, carboidratos, gordura por 100g
-  - Categorias: grãos, proteínas, laticínios, frutas, vegetais, etc.
-  - Fonte: TACO (Tabela Brasileira de Composição de Alimentos) ou similar
-- [ ] Busca de alimentos com autocomplete
-  - Busca por nome no frontend com resultados em tempo real
-  - Filtros por categoria
-- [ ] Troca inteligente de alimentos na dieta
-  - Usuário seleciona "trocar macarrão por arroz"
-  - Sistema calcula a quantidade de arroz equivalente em macros
-  - Recalcula o restante da refeição e do dia
-- [ ] Sugestões de substituição
-  - Ao trocar um alimento, sugerir equivalentes (mesma categoria, macros similares)
-  - Ex: trocar frango → sugerir peixe, carne magra, tofu
+  - 10 categorias: grains, proteins, dairy, fruits, vegetables, legumes, fats, beverages, sweets, others
+  - Porções comuns por alimento (ex: "1 xícara" = 160g)
+  - Seed idempotente (MongoDB com upsert)
+- [x] Busca de alimentos com filtros
+  - GET /api/v1/foods com busca por nome (regex case-insensitive) e filtro por categoria
+  - Frontend: input de busca com debounce (300ms) + chips de categoria
+- [x] Troca inteligente de alimentos na dieta
+  - PATCH /api/v1/diets/:id/meals/:mealIndex/foods/:foodIndex/swap
+  - Equivalência calórica: calcula gramas do novo alimento para manter mesmas calorias
+  - Arredondamento para múltiplos de 5g (praticidade na cozinha)
+  - Recalcula macros da refeição e totais da dieta automaticamente
+  - Funções puras: calculateFoodMacros, calculateEquivalentGrams, formatQuantity
+- [x] Sugestões de substituição
+  - GET /api/v1/foods/:id/suggestions
+  - Retorna alimentos da mesma categoria com calorias ±30%
+- [x] Frontend: modal de troca no check-in
+  - Botão "trocar" em cada alimento da tabela de refeições
+  - Modal com busca, filtros por categoria e preview de gramas equivalentes
+  - Dieta atualiza em tempo real após confirmação
+- [x] Testes: 142 backend + 32 frontend = 174 total
+
+### 3.4b Separação de Swap (Check-in vs Base) + Meal Refresh ✅
+**Objetivo:** Check-in swap não altera a dieta base. Dieta base tem swap permanente + refresh de refeição inteira via IA.
+
+- [x] Check-in food overrides (swap per-day)
+  - IFoodOverride no schema: mealIndex, foodIndex, originalFood, newFood
+  - applyFoodOverrides(): função pura com deep clone
+  - computeAdaptation() aplica overrides antes de recalcular
+  - PATCH /check-ins/foods/swap → salva no check-in, não altera dieta base
+- [x] Meal refresh com Gemini (regenera refeição inteira)
+  - generateSingleMeal() no AiService (Gemini 2.5 Flash)
+  - buildMealRefreshPrompt(): macros alvo, ingredientes a evitar, restrições
+  - RefreshLog model: contador atômico por dia (findOneAndUpdate + $inc)
+  - Rate limiting: FREE=2/dia, PRO=10/dia, ADMIN=ilimitado
+  - POST /diets/:id/meals/:mealIndex/refresh
+  - maxOutputTokens: 16384 (thinking tokens do Gemini 2.5 requerem margem)
+- [x] FoodSwapModal.vue: componente compartilhado extraído do check-in
+  - Props: open, targetFood (name + calories)
+  - Search com debounce, category chips, preview de gramas equivalentes
+  - Usado tanto no check-in quanto na tela de dieta
+- [x] Frontend: redesign da tela de dieta (diets/[id].vue)
+  - Migração para Nuxt UI (UCard, UButton, UBadge, UAlert)
+  - Swap button (⇄) em cada alimento → altera a dieta base permanentemente
+  - Refresh button (↻) em cada refeição → regenera via Gemini
+  - Skeleton animation durante refresh, swap-flash animation
+  - Badge com refreshesRemaining no topo
+- [x] Testes: 169 backend + 38 frontend = 207 total
 
 ### 3.5 Micronutrientes
 **Objetivo:** Dietas consideram vitaminas e minerais, não só macronutrientes.

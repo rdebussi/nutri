@@ -2,10 +2,13 @@ import { CheckIn } from './checkin.model.js'
 import type { ICheckIn, MealStatus } from './checkin.model.js'
 import { Diet } from '../diet/diet.model.js'
 import type { IDiet } from '../diet/diet.model.js'
+import { FoodItem } from '../food/food.model.js'
 import { AppError, NotFoundError } from '../../shared/utils/errors.js'
 import { calculateExerciseCalories } from '../../shared/utils/tdee.js'
 import { recalculateMeals } from '../../shared/utils/meal-recalculator.js'
 import type { RecalculationResult } from '../../shared/utils/meal-recalculator.js'
+import { applyFoodOverrides } from '../../shared/utils/food-overrides.js'
+import { calculateEquivalentGrams, calculateFoodMacros } from '../food/food.service.js'
 
 // ====================================================
 // CHECK-IN SERVICE
@@ -198,21 +201,109 @@ export class CheckInService {
   }
 
   // ====================================================
+  // TROCA DE ALIMENTO NO CHECK-IN (por dia)
+  // ====================================================
+  // Salva um food override no check-in. NÃO modifica a dieta base.
+  // O override é aplicado quando as adapted meals são calculadas.
+  async swapFoodInCheckIn(
+    userId: string,
+    dietId: string,
+    mealIndex: number,
+    foodIndex: number,
+    newFoodId: string,
+    date?: string,
+  ): Promise<CheckInWithAdaptation> {
+    // Valida dieta
+    const diet = await Diet.findById(dietId).lean()
+    if (!diet) throw new NotFoundError('Dieta não encontrada')
+    if (diet.userId !== userId) throw new AppError('Acesso negado', 403)
+
+    // Valida índices
+    if (mealIndex < 0 || mealIndex >= diet.meals.length) {
+      throw new AppError('Refeição não encontrada', 400)
+    }
+    if (foodIndex < 0 || foodIndex >= diet.meals[mealIndex].foods.length) {
+      throw new AppError('Alimento não encontrado na refeição', 400)
+    }
+
+    // Busca novo alimento na base TACO
+    const newFoodItem = await FoodItem.findById(newFoodId).lean()
+    if (!newFoodItem) throw new NotFoundError('Alimento não encontrado na base')
+
+    // Calcula equivalência calórica
+    const originalFood = diet.meals[mealIndex].foods[foodIndex]
+    const equivalentGrams = calculateEquivalentGrams(originalFood.calories, newFoodItem)
+    const newFood = calculateFoodMacros(newFoodItem, equivalentGrams)
+
+    const normalizedDate = normalizeDate(date)
+
+    // Busca check-in existente para preservar overrides anteriores
+    const existing = await CheckIn.findOne({ userId, date: normalizedDate })
+    let foodOverrides = existing?.foodOverrides || []
+
+    // Remove override anterior na mesma posição (se existir)
+    foodOverrides = foodOverrides.filter(
+      (o: any) => !(o.mealIndex === mealIndex && o.foodIndex === foodIndex),
+    )
+
+    // Adiciona novo override
+    foodOverrides.push({
+      mealIndex,
+      foodIndex,
+      originalFood: { ...originalFood },
+      newFood,
+    })
+
+    // Monta meals default (todas pending) caso check-in não exista
+    const defaultMeals = diet.meals.map(m => ({
+      mealName: m.name,
+      status: 'pending' as MealStatus,
+    }))
+
+    // Upsert check-in com o novo override
+    const checkIn = await CheckIn.findOneAndUpdate(
+      { userId, date: normalizedDate },
+      {
+        $setOnInsert: {
+          dietId,
+          meals: defaultMeals,
+          adherenceRate: 0,
+          totalCaloriesBurned: 0,
+        },
+        $set: { foodOverrides },
+      },
+      { upsert: true, new: true, runValidators: true },
+    )
+
+    // Computa adapted meals com overrides aplicados
+    const adaptation = this.computeAdaptation(checkIn, diet)
+
+    return { checkIn, ...adaptation }
+  }
+
+  // ====================================================
   // MOTOR DE RECÁLCULO — integração
   // ====================================================
   // Computa as refeições adaptadas usando o motor de recálculo.
   // Recebe o check-in (com status das refeições e exercícios) e a dieta original.
+  // Aplica food overrides antes de recalcular.
   private computeAdaptation(
     checkIn: ICheckIn,
     diet: IDiet,
   ): { adaptedMeals: RecalculationResult['adaptedMeals']; summary: RecalculationResult['summary'] } {
+    // Aplica food overrides (trocas de alimento do check-in)
+    const effectiveMeals = applyFoodOverrides(
+      diet.meals,
+      (checkIn.foodOverrides as any) || [],
+    )
+
     // Monta mealStatuses a partir do check-in
     const mealStatuses: Record<string, 'completed' | 'skipped' | 'pending'> = {}
     for (const meal of checkIn.meals) {
       mealStatuses[meal.mealName] = meal.status || 'pending'
     }
     // Refeições da dieta que não estão no check-in ficam como 'pending'
-    for (const meal of diet.meals) {
+    for (const meal of effectiveMeals) {
       if (!(meal.name in mealStatuses)) {
         mealStatuses[meal.name] = 'pending'
       }
@@ -223,18 +314,16 @@ export class CheckInService {
       .filter(e => e.isExtra)
       .reduce((sum, e) => sum + e.caloriesBurned, 0)
 
-    // Usa a SOMA REAL das meals como target, não diet.totalCalories.
-    // Motivo: a IA pode gerar diet.totalCalories ligeiramente diferente
-    // da soma das meals. Usar a soma garante sf = 1.0 quando nada muda.
+    // Usa a SOMA REAL das effectiveMeals como target (com overrides aplicados)
     const dailyTargets = {
-      calories: diet.meals.reduce((sum, m) => sum + m.totalCalories, 0),
-      protein: diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.protein, 0), 0),
-      carbs: diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.carbs, 0), 0),
-      fat: diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.fat, 0), 0),
+      calories: effectiveMeals.reduce((sum, m) => sum + m.totalCalories, 0),
+      protein: effectiveMeals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.protein, 0), 0),
+      carbs: effectiveMeals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.carbs, 0), 0),
+      fat: effectiveMeals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.fat, 0), 0),
     }
 
     const result = recalculateMeals({
-      originalMeals: diet.meals,
+      originalMeals: effectiveMeals,
       mealStatuses,
       dailyTargets,
       extraCaloriesBurned,

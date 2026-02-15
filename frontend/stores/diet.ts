@@ -76,5 +76,38 @@ export const useDietStore = defineStore('diet', () => {
     return currentDiet.value
   }
 
-  return { diets, currentDiet, generating, error, generate, fetchAll, fetchById }
+  // Regenera uma refeição com IA (mesmas calorias, ingredientes diferentes)
+  const refreshing = ref(false)
+  const refreshesRemaining = ref<number | null>(null)
+
+  async function refreshMeal(dietId: string, mealIndex: number) {
+    refreshing.value = true
+    error.value = ''
+
+    try {
+      const { api } = useApi()
+      const result = await api<{ diet: Diet; refreshesRemaining: number }>(
+        `/diets/${dietId}/meals/${mealIndex}/refresh`,
+        { method: 'POST' },
+      )
+      currentDiet.value = result.diet
+      refreshesRemaining.value = result.refreshesRemaining
+
+      // Atualiza na lista de dietas também
+      const idx = diets.value.findIndex(d => d._id === dietId)
+      if (idx !== -1) diets.value[idx] = result.diet
+
+      return result
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : 'Erro ao atualizar refeição'
+      throw e
+    } finally {
+      refreshing.value = false
+    }
+  }
+
+  return {
+    diets, currentDiet, generating, refreshing, refreshesRemaining, error,
+    generate, fetchAll, fetchById, refreshMeal,
+  }
 })

@@ -51,6 +51,19 @@ export function errorHandler(
     })
   }
 
+  // Erros do Fastify (parsing de JSON, validação de schema, etc.)
+  // FastifyError tem statusCode próprio — respeitamos ele.
+  const fastifyErr = error as Error & { statusCode?: number; code?: string }
+  if (fastifyErr.statusCode && fastifyErr.statusCode < 500) {
+    return reply.status(fastifyErr.statusCode).send({
+      success: false,
+      error: {
+        code: fastifyErr.code || 'REQUEST_ERROR',
+        message: fastifyErr.message,
+      },
+    })
+  }
+
   // Qualquer outro erro → 500 genérico
   console.error('Unhandled error:', error)
 

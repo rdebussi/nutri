@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { PrismaClient } from '@prisma/client'
 import { CheckInService } from './checkin.service.js'
-import { createCheckInSchema, dateQuerySchema } from './checkin.validator.js'
+import { createCheckInSchema, dateQuerySchema, swapFoodInCheckInSchema } from './checkin.validator.js'
 import { authMiddleware } from '../../shared/middleware/auth.middleware.js'
 
 // ====================================================
@@ -53,6 +53,24 @@ export async function checkinRoutes(
     const result = await checkinService.getByDate(
       request.userId!,
       query.date,
+    )
+
+    return { success: true, data: result }
+  })
+
+  // PATCH /api/v1/check-ins/foods/swap
+  // Troca um alimento no check-in (por dia), sem alterar a dieta base.
+  // Salva um food override no check-in e retorna adapted meals atualizadas.
+  app.patch('/foods/swap', async (request) => {
+    const input = swapFoodInCheckInSchema.parse(request.body)
+
+    const result = await checkinService.swapFoodInCheckIn(
+      request.userId!,
+      input.dietId,
+      input.mealIndex,
+      input.foodIndex,
+      input.newFoodId,
+      input.date,
     )
 
     return { success: true, data: result }

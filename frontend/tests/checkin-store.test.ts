@@ -193,4 +193,53 @@ describe('CheckIn Store', () => {
     expect(jantar.scaleFactor).toBe(1.5)
     expect(jantar.totalCalories).toBe(750) // escalado de 500
   })
+
+  // ====================================================
+  // swapFoodInCheckIn — Troca por dia (não altera a dieta base)
+  // ====================================================
+
+  it('swapFoodInCheckIn calls API and updates state', async () => {
+    const swapResponse = {
+      checkIn: {
+        ...mockCheckInResponse.checkIn,
+        foodOverrides: [{ mealIndex: 0, foodIndex: 0, originalFood: {}, newFood: { name: 'Batata doce' } }],
+      },
+      adaptedMeals: mockCheckInResponse.adaptedMeals,
+      summary: mockCheckInResponse.summary,
+    }
+    mockApi.mockResolvedValue(swapResponse)
+
+    const store = useCheckinStore()
+    const result = await store.swapFoodInCheckIn('diet-1', 0, 0, 'food-batata')
+
+    expect(mockApi).toHaveBeenCalledWith('/check-ins/foods/swap', {
+      method: 'PATCH',
+      body: { dietId: 'diet-1', mealIndex: 0, foodIndex: 0, newFoodId: 'food-batata' },
+    })
+    expect(store.todayCheckIn).toEqual(swapResponse.checkIn)
+    expect(store.adaptedMeals).toEqual(swapResponse.adaptedMeals)
+    expect(result).toBeDefined()
+  })
+
+  it('swapFoodInCheckIn includes optional date', async () => {
+    mockApi.mockResolvedValue(mockCheckInResponse)
+
+    const store = useCheckinStore()
+    await store.swapFoodInCheckIn('diet-1', 0, 0, 'food-batata', '2026-02-15')
+
+    expect(mockApi).toHaveBeenCalledWith('/check-ins/foods/swap', {
+      method: 'PATCH',
+      body: { dietId: 'diet-1', mealIndex: 0, foodIndex: 0, newFoodId: 'food-batata', date: '2026-02-15' },
+    })
+  })
+
+  it('swapFoodInCheckIn sets error on failure', async () => {
+    mockApi.mockRejectedValue(new Error('Alimento não encontrado'))
+
+    const store = useCheckinStore()
+    await expect(store.swapFoodInCheckIn('diet-1', 0, 0, 'bad-id')).rejects.toThrow('Alimento não encontrado')
+
+    expect(store.error).toBe('Alimento não encontrado')
+    expect(store.loading).toBe(false)
+  })
 })

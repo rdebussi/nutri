@@ -2,8 +2,11 @@ import type { PrismaClient } from '@prisma/client'
 import type { AiService } from '../ai/ai.service.js'
 import type { ExerciseRoutineInfo } from '../ai/ai.prompts.js'
 import { Diet } from './diet.model.js'
-import { AppError } from '../../shared/utils/errors.js'
+import { FoodItem } from '../food/food.model.js'
+import { RefreshLog } from './refresh-log.model.js'
+import { AppError, NotFoundError } from '../../shared/utils/errors.js'
 import { calculateBMR, calculateWeeklyAvgTDEE, adjustForGoal } from '../../shared/utils/tdee.js'
+import { calculateFoodMacros, calculateEquivalentGrams, formatQuantity } from '../food/food.service.js'
 
 // ====================================================
 // DIET SERVICE
@@ -22,6 +25,13 @@ const GENERATION_LIMITS: Record<string, number> = {
   FREE: 3,   // 3 dietas por mês
   PRO: -1,   // ilimitado (-1)
   ADMIN: -1,
+}
+
+// Limites de refresh de refeição por dia
+const REFRESH_LIMITS: Record<string, number> = {
+  FREE: 2,    // 2 refreshes/dia
+  PRO: 10,    // 10 refreshes/dia
+  ADMIN: -1,  // ilimitado
 }
 
 export class DietService {
@@ -139,6 +149,170 @@ export class DietService {
     }
 
     return diet
+  }
+
+  // ==========================================
+  // TROCA DE ALIMENTOS
+  // ==========================================
+  // Substitui um alimento na dieta por outro da base TACO,
+  // calculando a quantidade equivalente em calorias.
+  async swapFood(
+    dietId: string,
+    userId: string,
+    mealIndex: number,
+    foodIndex: number,
+    newFoodId: string,
+  ) {
+    // 1. Busca e valida a dieta
+    const diet = await Diet.findById(dietId)
+    if (!diet) {
+      throw new NotFoundError('Dieta não encontrada')
+    }
+    if (diet.userId !== userId) {
+      throw new AppError('Acesso negado', 403)
+    }
+
+    // 2. Valida índices
+    if (mealIndex < 0 || mealIndex >= diet.meals.length) {
+      throw new AppError('Refeição não encontrada', 400)
+    }
+    const meal = diet.meals[mealIndex]
+
+    if (foodIndex < 0 || foodIndex >= meal.foods.length) {
+      throw new AppError('Alimento não encontrado na refeição', 400)
+    }
+    const oldFood = meal.foods[foodIndex]
+
+    // 3. Busca o novo alimento na base TACO
+    const newFoodItem = await FoodItem.findById(newFoodId).lean()
+    if (!newFoodItem) {
+      throw new NotFoundError('Alimento não encontrado na base')
+    }
+
+    // 4. Calcula quantidade equivalente (mesmas calorias)
+    const targetCalories = oldFood.calories
+    const equivalentGrams = calculateEquivalentGrams(targetCalories, newFoodItem)
+
+    // 5. Calcula macros para a quantidade equivalente
+    const newFood = calculateFoodMacros(newFoodItem, equivalentGrams)
+    newFood.quantity = formatQuantity(equivalentGrams, newFoodItem)
+
+    // 6. Substitui o alimento
+    meal.foods[foodIndex] = newFood
+
+    // 7. Recalcula totais da refeição e da dieta
+    meal.totalCalories = Math.round(
+      meal.foods.reduce((sum, f) => sum + f.calories, 0),
+    )
+    diet.totalCalories = diet.meals.reduce((sum, m) => sum + m.totalCalories, 0)
+    diet.totalProtein = Math.round(
+      diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.protein, 0), 0),
+    )
+    diet.totalCarbs = Math.round(
+      diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.carbs, 0), 0),
+    )
+    diet.totalFat = Math.round(
+      diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.fat, 0), 0),
+    )
+
+    // 8. Salva
+    await diet.save()
+
+    return diet.toObject()
+  }
+
+  // ==========================================
+  // REFRESH DE REFEIÇÃO (com IA)
+  // ==========================================
+  // Regenera uma refeição com ingredientes diferentes mas
+  // mesmas calorias. Usa Gemini para gerar a nova refeição.
+  // Controla limites por dia baseado no plano do usuário.
+  async refreshMeal(
+    dietId: string,
+    userId: string,
+    mealIndex: number,
+  ): Promise<{ diet: any; refreshesRemaining: number }> {
+    // 1. Busca e valida a dieta
+    const diet = await Diet.findById(dietId)
+    if (!diet) throw new NotFoundError('Dieta não encontrada')
+    if (diet.userId !== userId) throw new AppError('Acesso negado', 403)
+
+    // 2. Valida índice
+    if (mealIndex < 0 || mealIndex >= diet.meals.length) {
+      throw new AppError('Refeição não encontrada', 400)
+    }
+
+    // 3. Busca role e restrições do usuário
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { profile: true },
+    })
+    const role = user?.role || 'FREE'
+
+    // 4. Verifica limite de refreshes
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const refreshLog = await RefreshLog.findOneAndUpdate(
+      { userId, date: today },
+      { $inc: { count: 1 } },
+      { upsert: true, new: true },
+    )
+
+    const limit = REFRESH_LIMITS[role] ?? 2
+    if (limit !== -1 && refreshLog.count > limit) {
+      throw new AppError(
+        `Limite de ${limit} atualizações/dia atingido. Faça upgrade para o plano PRO.`,
+        429,
+      )
+    }
+
+    // 5. Monta input para a IA
+    const currentMeal = diet.meals[mealIndex]
+    const mealProtein = currentMeal.foods.reduce((s, f) => s + f.protein, 0)
+    const mealCarbs = currentMeal.foods.reduce((s, f) => s + f.carbs, 0)
+    const mealFat = currentMeal.foods.reduce((s, f) => s + f.fat, 0)
+
+    const refreshInput = {
+      mealName: currentMeal.name,
+      mealTime: currentMeal.time,
+      targetCalories: currentMeal.totalCalories,
+      targetProtein: Math.round(mealProtein),
+      targetCarbs: Math.round(mealCarbs),
+      targetFat: Math.round(mealFat),
+      currentFoodNames: currentMeal.foods.map(f => f.name),
+      restrictions: user?.profile?.restrictions || [],
+    }
+
+    // 6. Gera nova refeição com IA
+    const newMeal = await this.aiService.generateSingleMeal(refreshInput)
+
+    // 7. Substitui na dieta
+    diet.meals[mealIndex] = {
+      name: newMeal.name,
+      time: newMeal.time,
+      foods: newMeal.foods,
+      totalCalories: newMeal.totalCalories,
+    } as any
+
+    // 8. Recalcula totais da dieta
+    diet.totalCalories = diet.meals.reduce((sum, m) => sum + m.totalCalories, 0)
+    diet.totalProtein = Math.round(
+      diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.protein, 0), 0),
+    )
+    diet.totalCarbs = Math.round(
+      diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.carbs, 0), 0),
+    )
+    diet.totalFat = Math.round(
+      diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.fat, 0), 0),
+    )
+
+    // 9. Salva
+    await diet.save()
+
+    const refreshesRemaining = limit === -1 ? -1 : Math.max(0, limit - refreshLog.count)
+
+    return { diet: diet.toObject(), refreshesRemaining }
   }
 
   // ==========================================

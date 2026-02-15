@@ -1,11 +1,14 @@
 <!-- ====================================================
-  VISUALIZAÇÃO DE DIETA
+  VISUALIZAÇÃO DE DIETA — Dieta Base
   ====================================================
   [id].vue → rota dinâmica no Nuxt!
   O nome do arquivo entre colchetes vira um parâmetro.
   /diets/abc123 → useRoute().params.id = "abc123"
 
-  É como o :id do Express/Fastify, mas definido pelo nome do arquivo.
+  FASE 5: Swap + Refresh na dieta base.
+  - Swap: troca alimento permanentemente (altera a dieta base)
+  - Refresh: regenera refeição com IA (mesmas calorias, ingredientes diferentes)
+  - Limites de refresh: FREE=2/dia, PRO=10/dia, ADMIN=ilimitado
 -->
 
 <script setup lang="ts">
@@ -15,6 +18,7 @@ definePageMeta({
 
 const route = useRoute()
 const dietStore = useDietStore()
+const foodStore = useFoodStore()
 
 const loading = ref(true)
 
@@ -26,161 +30,293 @@ onMounted(async () => {
   }
 })
 
-// computed: recalcula automaticamente quando dietStore.currentDiet muda
 const diet = computed(() => dietStore.currentDiet)
+
+// ====================================================
+// SWAP — Troca permanente de alimento na dieta base
+// ====================================================
+const showSwapModal = ref(false)
+const swapTarget = ref<{ mealIndex: number; foodIndex: number; name: string; calories: number } | null>(null)
+const swappedCell = ref<{ mealIndex: number; foodIndex: number } | null>(null)
+
+function openSwapModal(mealIndex: number, foodIndex: number, foodName: string, calories: number) {
+  swapTarget.value = { mealIndex, foodIndex, name: foodName, calories }
+  showSwapModal.value = true
+}
+
+async function handleSwap(newFoodId: string) {
+  if (!swapTarget.value || !diet.value) return
+
+  const { mealIndex, foodIndex } = swapTarget.value
+  const selectedFood = foodStore.foods.find(f => f._id === newFoodId)
+
+  // Salva estado anterior para rollback
+  const oldDiet = JSON.parse(JSON.stringify(diet.value))
+
+  // Update otimista
+  if (selectedFood) {
+    const targetCalories = swapTarget.value.calories
+    const equivalentGrams = previewEquivalentGrams(targetCalories, selectedFood.caloriesPer100g)
+    const factor = equivalentGrams / 100
+
+    const optimisticFood = {
+      name: selectedFood.name,
+      quantity: `${equivalentGrams}g`,
+      calories: Math.round(selectedFood.caloriesPer100g * factor),
+      protein: Math.round(selectedFood.proteinPer100g * factor),
+      carbs: Math.round(selectedFood.carbsPer100g * factor),
+      fat: Math.round(selectedFood.fatPer100g * factor),
+    }
+
+    diet.value.meals[mealIndex].foods[foodIndex] = optimisticFood
+    recalcDietTotals()
+  }
+
+  // Animação
+  swappedCell.value = { mealIndex, foodIndex }
+  setTimeout(() => { swappedCell.value = null }, 700)
+
+  // Fecha modal
+  showSwapModal.value = false
+  swapTarget.value = null
+
+  // Sincroniza com backend (swap permanente na dieta base)
+  try {
+    const updatedDiet = await foodStore.swapFood(
+      diet.value!._id,
+      mealIndex,
+      foodIndex,
+      newFoodId,
+    )
+    if (updatedDiet) {
+      dietStore.currentDiet = updatedDiet as typeof dietStore.currentDiet
+    }
+  } catch {
+    // Rollback
+    dietStore.currentDiet = oldDiet
+  }
+}
+
+function previewEquivalentGrams(targetCalories: number, caloriesPer100g: number): number {
+  if (caloriesPer100g === 0) return 100
+  const rawGrams = (targetCalories / caloriesPer100g) * 100
+  const rounded = Math.round(rawGrams / 5) * 5
+  return Math.max(5, rounded)
+}
+
+function recalcDietTotals() {
+  if (!diet.value) return
+  for (const meal of diet.value.meals) {
+    meal.totalCalories = Math.round(meal.foods.reduce((s, f) => s + f.calories, 0))
+  }
+  diet.value.totalCalories = diet.value.meals.reduce((sum, m) => sum + m.totalCalories, 0)
+  diet.value.totalProtein = Math.round(
+    diet.value.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.protein, 0), 0),
+  )
+  diet.value.totalCarbs = Math.round(
+    diet.value.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.carbs, 0), 0),
+  )
+  diet.value.totalFat = Math.round(
+    diet.value.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.fat, 0), 0),
+  )
+}
+
+// ====================================================
+// REFRESH — Regenera refeição inteira com IA
+// ====================================================
+const refreshingMeal = ref<number | null>(null)
+
+async function handleRefreshMeal(mealIndex: number) {
+  if (!diet.value || refreshingMeal.value !== null) return
+
+  refreshingMeal.value = mealIndex
+
+  try {
+    await dietStore.refreshMeal(diet.value._id, mealIndex)
+  } catch {
+    // erro já no dietStore.error
+  } finally {
+    refreshingMeal.value = null
+  }
+}
 </script>
 
 <template>
-  <div class="diet-page">
-    <header class="page-header">
-      <NuxtLink to="/dashboard" class="back-link">← Voltar</NuxtLink>
-    </header>
+  <div class="max-w-2xl mx-auto p-4">
+    <!-- Header -->
+    <div class="flex items-center gap-3 mb-6">
+      <NuxtLink to="/dashboard" class="text-zinc-500 hover:text-emerald-600 text-sm">
+        ← Voltar
+      </NuxtLink>
+      <h1 class="text-xl font-bold text-emerald-600">Dieta Base</h1>
+    </div>
 
-    <div v-if="loading" class="loading">Carregando dieta...</div>
+    <!-- Loading -->
+    <div v-if="loading" class="text-center py-8 text-zinc-400">Carregando dieta...</div>
 
+    <!-- Dieta -->
     <template v-else-if="diet">
-      <div class="diet-header">
-        <h1>{{ diet.title }}</h1>
-        <p class="diet-date">
-          Gerada em {{ new Date(diet.createdAt).toLocaleDateString('pt-BR') }}
-        </p>
-      </div>
+      <!-- Info da dieta -->
+      <UCard class="mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <div>
+            <h2 class="font-semibold text-zinc-800">{{ diet.title }}</h2>
+            <p class="text-xs text-zinc-400">
+              Gerada em {{ new Date(diet.createdAt).toLocaleDateString('pt-BR') }}
+            </p>
+          </div>
+          <UBadge v-if="dietStore.refreshesRemaining !== null" color="primary" variant="subtle">
+            {{ dietStore.refreshesRemaining }} refresh(es) restante(s)
+          </UBadge>
+        </div>
 
-      <!-- Resumo de macronutrientes -->
-      <div class="macros-summary">
-        <div class="macro-card">
-          <span class="macro-value">{{ diet.totalCalories }}</span>
-          <span class="macro-label">kcal</span>
+        <!-- Macros resumo -->
+        <div class="grid grid-cols-4 gap-3 mt-3">
+          <div class="text-center p-2 bg-emerald-50 rounded-lg">
+            <span class="block text-lg font-bold text-emerald-700">{{ diet.totalCalories }}</span>
+            <span class="text-xs text-zinc-500">kcal</span>
+          </div>
+          <div class="text-center p-2 bg-blue-50 rounded-lg">
+            <span class="block text-lg font-bold text-blue-700">{{ diet.totalProtein }}g</span>
+            <span class="text-xs text-zinc-500">Proteína</span>
+          </div>
+          <div class="text-center p-2 bg-amber-50 rounded-lg">
+            <span class="block text-lg font-bold text-amber-700">{{ diet.totalCarbs }}g</span>
+            <span class="text-xs text-zinc-500">Carboidratos</span>
+          </div>
+          <div class="text-center p-2 bg-pink-50 rounded-lg">
+            <span class="block text-lg font-bold text-pink-700">{{ diet.totalFat }}g</span>
+            <span class="text-xs text-zinc-500">Gordura</span>
+          </div>
         </div>
-        <div class="macro-card protein">
-          <span class="macro-value">{{ diet.totalProtein }}g</span>
-          <span class="macro-label">Proteína</span>
-        </div>
-        <div class="macro-card carbs">
-          <span class="macro-value">{{ diet.totalCarbs }}g</span>
-          <span class="macro-label">Carboidratos</span>
-        </div>
-        <div class="macro-card fat">
-          <span class="macro-value">{{ diet.totalFat }}g</span>
-          <span class="macro-label">Gordura</span>
-        </div>
-      </div>
+      </UCard>
+
+      <!-- Erro de refresh -->
+      <UAlert v-if="dietStore.error" color="error" :description="dietStore.error" class="mb-4" />
 
       <!-- Refeições -->
-      <div class="meals">
-        <div v-for="(meal, index) in diet.meals" :key="index" class="meal-card">
-          <div class="meal-header">
-            <h2>{{ meal.name }}</h2>
-            <span class="meal-time">{{ meal.time }}</span>
-            <span class="meal-calories">{{ meal.totalCalories }} kcal</span>
+      <div class="space-y-3 mb-4">
+        <UCard v-for="(meal, mIndex) in diet.meals" :key="mIndex">
+          <!-- Header da refeição com botão refresh -->
+          <div class="flex items-center justify-between">
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                <span class="font-semibold text-zinc-800">{{ meal.name }}</span>
+                <span class="text-xs text-zinc-400">{{ meal.time }}</span>
+              </div>
+              <p class="text-sm text-emerald-600 font-medium">
+                {{ meal.totalCalories }} kcal
+                <span class="text-zinc-400 text-xs ml-1">
+                  P:{{ Math.round(meal.foods.reduce((s, f) => s + f.protein, 0)) }}g
+                  C:{{ Math.round(meal.foods.reduce((s, f) => s + f.carbs, 0)) }}g
+                  G:{{ Math.round(meal.foods.reduce((s, f) => s + f.fat, 0)) }}g
+                </span>
+              </p>
+            </div>
+            <UButton
+              size="xs"
+              variant="outline"
+              color="primary"
+              :loading="refreshingMeal === mIndex"
+              :disabled="refreshingMeal !== null"
+              title="Regenerar refeição com IA"
+              @click="handleRefreshMeal(mIndex)"
+            >
+              &#8635; Refresh
+            </UButton>
           </div>
 
-          <table class="foods-table">
-            <thead>
-              <tr>
-                <th>Alimento</th>
-                <th>Quantidade</th>
-                <th>Kcal</th>
-                <th>P</th>
-                <th>C</th>
-                <th>G</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(food, fIndex) in meal.foods" :key="fIndex">
-                <td>{{ food.name }}</td>
-                <td>{{ food.quantity }}</td>
-                <td>{{ food.calories }}</td>
-                <td>{{ food.protein }}g</td>
-                <td>{{ food.carbs }}g</td>
-                <td>{{ food.fat }}g</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+          <!-- Skeleton durante refresh -->
+          <div v-if="refreshingMeal === mIndex" class="mt-3 pt-3 border-t border-zinc-100 space-y-2">
+            <div v-for="n in 3" :key="n" class="h-5 bg-zinc-100 rounded animate-pulse" />
+          </div>
+
+          <!-- Tabela de alimentos -->
+          <div v-else class="mt-3 pt-3 border-t border-zinc-100">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-zinc-400 text-xs">
+                  <th class="text-left font-normal pb-1">Alimento</th>
+                  <th class="text-right font-normal pb-1">Qtd</th>
+                  <th class="text-right font-normal pb-1">Kcal</th>
+                  <th class="text-right font-normal pb-1">P</th>
+                  <th class="text-right font-normal pb-1">C</th>
+                  <th class="text-right font-normal pb-1">G</th>
+                  <th class="w-8"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(food, fIdx) in meal.foods"
+                  :key="`${mIndex}-${fIdx}`"
+                  class="text-zinc-700 group"
+                  :class="{ 'swap-flash': swappedCell?.mealIndex === mIndex && swappedCell?.foodIndex === fIdx }"
+                >
+                  <td class="py-0.5">{{ food.name }}</td>
+                  <td class="text-right py-0.5">{{ food.quantity }}</td>
+                  <td class="text-right py-0.5">{{ Math.round(food.calories) }}</td>
+                  <td class="text-right py-0.5 text-zinc-400">{{ Math.round(food.protein) }}</td>
+                  <td class="text-right py-0.5 text-zinc-400">{{ Math.round(food.carbs) }}</td>
+                  <td class="text-right py-0.5 text-zinc-400">{{ Math.round(food.fat) }}</td>
+                  <td class="text-right py-0.5">
+                    <button
+                      class="text-zinc-300 hover:text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                      title="Trocar alimento"
+                      @click="openSwapModal(mIndex, fIdx, food.name, food.calories)"
+                    >
+                      &#8644;
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </UCard>
       </div>
 
       <!-- Notas da IA -->
-      <div v-if="diet.notes" class="notes">
-        <h3>Observações</h3>
-        <p>{{ diet.notes }}</p>
-      </div>
+      <UCard v-if="diet.notes" class="mb-4">
+        <h3 class="font-semibold text-zinc-800 text-sm mb-1">Observações</h3>
+        <p class="text-sm text-zinc-600 leading-relaxed">{{ diet.notes }}</p>
+      </UCard>
+
+      <!-- Modal de troca (swap permanente na dieta base) -->
+      <FoodSwapModal
+        :open="showSwapModal"
+        :target-food="swapTarget"
+        @update:open="showSwapModal = $event"
+        @swap="handleSwap"
+      />
     </template>
 
-    <div v-else class="error">Dieta não encontrada.</div>
+    <!-- Sem dieta -->
+    <UCard v-else class="text-center">
+      <p class="text-zinc-500 mb-4">Dieta não encontrada.</p>
+      <UButton to="/dashboard" color="primary">Voltar ao Dashboard</UButton>
+    </UCard>
   </div>
 </template>
 
 <style scoped>
-.diet-page { max-width: 800px; margin: 0 auto; padding: 1rem; }
-
-.page-header { padding: 1rem 0; }
-.back-link { color: #10b981; text-decoration: none; font-weight: 600; }
-.back-link:hover { text-decoration: underline; }
-
-.diet-header { margin-bottom: 1.5rem; }
-.diet-header h1 { color: #1f2937; margin-bottom: 0.25rem; }
-.diet-date { color: #999; font-size: 0.875rem; }
-
-.macros-summary {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.75rem;
-  margin-bottom: 2rem;
+@keyframes swap-flash {
+  0% {
+    filter: blur(4px);
+    opacity: 0.3;
+    background-color: rgb(16 185 129 / 0.15);
+  }
+  50% {
+    filter: blur(0);
+    opacity: 1;
+    background-color: rgb(16 185 129 / 0.1);
+  }
+  100% {
+    filter: blur(0);
+    opacity: 1;
+    background-color: transparent;
+  }
 }
 
-.macro-card {
-  text-align: center;
-  padding: 1rem;
-  background: #f0fdf4;
-  border-radius: 8px;
+.swap-flash td {
+  animation: swap-flash 0.7s ease-out;
 }
-.macro-card.protein { background: #eff6ff; }
-.macro-card.carbs { background: #fefce8; }
-.macro-card.fat { background: #fdf2f8; }
-
-.macro-value { display: block; font-size: 1.5rem; font-weight: 700; }
-.macro-label { font-size: 0.75rem; color: #666; text-transform: uppercase; }
-
-.meal-card {
-  background: white;
-  border: 1px solid #eee;
-  border-radius: 8px;
-  margin-bottom: 1rem;
-  overflow: hidden;
-}
-
-.meal-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem;
-  background: #f9fafb;
-}
-.meal-header h2 { font-size: 1rem; flex: 1; }
-.meal-time { color: #666; font-size: 0.875rem; }
-.meal-calories { font-weight: 600; color: #10b981; font-size: 0.875rem; }
-
-.foods-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-.foods-table th {
-  text-align: left;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid #eee;
-  font-weight: 600;
-  color: #666;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-}
-.foods-table td { padding: 0.5rem 1rem; border-bottom: 1px solid #f5f5f5; }
-
-.notes {
-  margin-top: 1.5rem;
-  padding: 1rem;
-  background: #fffbeb;
-  border-radius: 8px;
-}
-.notes h3 { font-size: 0.875rem; margin-bottom: 0.5rem; }
-.notes p { color: #666; font-size: 0.875rem; line-height: 1.5; }
-
-.loading, .error { text-align: center; padding: 3rem; color: #999; }
 </style>

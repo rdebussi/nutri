@@ -60,4 +60,54 @@ describe('Diet Store', () => {
     expect(store.error).toBe('Limite atingido')
     expect(store.generating).toBe(false)
   })
+
+  // ====================================================
+  // refreshMeal — Regenera refeição com IA
+  // ====================================================
+
+  it('refreshMeal updates currentDiet and refreshesRemaining', async () => {
+    const refreshedDiet = {
+      _id: 'diet-1',
+      title: 'Dieta A',
+      meals: [{ name: 'Café', foods: [{ name: 'Quinoa', quantity: '150g', calories: 200 }], totalCalories: 200 }],
+      totalCalories: 200,
+    }
+    mockApi.mockResolvedValue({ diet: refreshedDiet, refreshesRemaining: 1 })
+
+    const store = useDietStore()
+    store.diets = [{ _id: 'diet-1', title: 'Dieta A', meals: [], totalCalories: 0 } as any]
+
+    const result = await store.refreshMeal('diet-1', 0)
+
+    expect(mockApi).toHaveBeenCalledWith('/diets/diet-1/meals/0/refresh', { method: 'POST' })
+    expect(store.currentDiet).toEqual(refreshedDiet)
+    expect(store.refreshesRemaining).toBe(1)
+    expect(result?.refreshesRemaining).toBe(1)
+  })
+
+  it('refreshMeal updates diet in diets list', async () => {
+    const refreshedDiet = { _id: 'diet-1', title: 'Dieta A', meals: [], totalCalories: 300 }
+    mockApi.mockResolvedValue({ diet: refreshedDiet, refreshesRemaining: 5 })
+
+    const store = useDietStore()
+    store.diets = [
+      { _id: 'diet-1', title: 'Dieta A', meals: [], totalCalories: 0 } as any,
+      { _id: 'diet-2', title: 'Dieta B', meals: [], totalCalories: 0 } as any,
+    ]
+
+    await store.refreshMeal('diet-1', 0)
+
+    expect(store.diets[0].totalCalories).toBe(300)
+    expect(store.diets[1]._id).toBe('diet-2') // outra dieta intocada
+  })
+
+  it('refreshMeal sets error on failure', async () => {
+    mockApi.mockRejectedValue(new Error('Limite de refreshes atingido'))
+
+    const store = useDietStore()
+
+    await expect(store.refreshMeal('diet-1', 0)).rejects.toThrow('Limite de refreshes atingido')
+    expect(store.error).toBe('Limite de refreshes atingido')
+    expect(store.refreshing).toBe(false)
+  })
 })

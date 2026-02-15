@@ -32,12 +32,36 @@ export interface IExerciseLog {
   isExtra: boolean  // true = exercício avulso (fora da rotina)
 }
 
+// Food override: troca de alimento no check-in (por dia).
+// Não altera a dieta base — fica salvo apenas no check-in.
+export interface IFoodOverride {
+  mealIndex: number
+  foodIndex: number
+  originalFood: {
+    name: string
+    quantity: string
+    calories: number
+    protein: number
+    carbs: number
+    fat: number
+  }
+  newFood: {
+    name: string
+    quantity: string
+    calories: number
+    protein: number
+    carbs: number
+    fat: number
+  }
+}
+
 export interface ICheckIn extends Document {
   userId: string
   dietId: string
   date: Date
   meals: IMealCheckIn[]
   exercises: IExerciseLog[]
+  foodOverrides: IFoodOverride[]
   adherenceRate: number
   totalCaloriesBurned: number
   createdAt: Date
@@ -60,12 +84,29 @@ const exerciseLogSchema = new Schema<IExerciseLog>({
   isExtra: { type: Boolean, required: true, default: false },
 }, { _id: false })
 
+const foodInOverrideSchema = new Schema({
+  name: { type: String, required: true },
+  quantity: { type: String, required: true },
+  calories: { type: Number, required: true },
+  protein: { type: Number, required: true },
+  carbs: { type: Number, required: true },
+  fat: { type: Number, required: true },
+}, { _id: false })
+
+const foodOverrideSchema = new Schema<IFoodOverride>({
+  mealIndex: { type: Number, required: true },
+  foodIndex: { type: Number, required: true },
+  originalFood: { type: foodInOverrideSchema, required: true },
+  newFood: { type: foodInOverrideSchema, required: true },
+}, { _id: false })
+
 const checkInSchema = new Schema<ICheckIn>({
   userId: { type: String, required: true, index: true },
   dietId: { type: String, required: true },
   date: { type: Date, required: true },
   meals: { type: [mealCheckInSchema], required: true },
   exercises: { type: [exerciseLogSchema], default: [] },
+  foodOverrides: { type: [foodOverrideSchema], default: [] },
   adherenceRate: { type: Number, required: true, min: 0, max: 100 },
   totalCaloriesBurned: { type: Number, default: 0 },
 }, { timestamps: true })

@@ -37,5 +37,16 @@ export const dateQuerySchema = z.object({
     .optional(),
 })
 
+export const swapFoodInCheckInSchema = z.object({
+  dietId: z.string().min(1, 'ID da dieta é obrigatório'),
+  mealIndex: z.number().int().min(0),
+  foodIndex: z.number().int().min(0),
+  newFoodId: z.string().min(1, 'ID do alimento é obrigatório'),
+  date: z.string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data deve estar no formato YYYY-MM-DD')
+    .optional(),
+})
+
 export type CreateCheckInInput = z.infer<typeof createCheckInSchema>
 export type DateQueryInput = z.infer<typeof dateQuerySchema>
+export type SwapFoodInCheckInInput = z.infer<typeof swapFoodInCheckInSchema>

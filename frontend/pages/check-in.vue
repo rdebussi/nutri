@@ -16,6 +16,7 @@ definePageMeta({
 const dietStore = useDietStore()
 const checkinStore = useCheckinStore()
 const exerciseStore = useExerciseStore()
+const foodStore = useFoodStore()
 
 // Estado local
 type MealState = { mealName: string; status: MealStatus; notes: string }
@@ -176,6 +177,93 @@ async function handleSave(extraExercises?: Array<{
   } finally {
     saving.value = false
   }
+}
+
+// ====================================================
+// TROCA DE ALIMENTOS — Check-in swap (por dia)
+// ====================================================
+// A troca no check-in salva um override no documento do check-in,
+// NÃO altera a dieta base. No dia seguinte, volta ao original.
+const showSwapModal = ref(false)
+const swapTarget = ref<{ mealIndex: number; foodIndex: number; name: string; calories: number } | null>(null)
+
+// Controla qual alimento acabou de ser trocado (para animação)
+const swappedCell = ref<{ mealIndex: number; foodIndex: number } | null>(null)
+
+function openSwapModal(mealIndex: number, foodIndex: number, foodName: string, calories: number) {
+  swapTarget.value = { mealIndex, foodIndex, name: foodName, calories }
+  showSwapModal.value = true
+}
+
+async function handleSwap(newFoodId: string) {
+  if (!swapTarget.value || !activeDiet.value) return
+
+  const { mealIndex, foodIndex } = swapTarget.value
+
+  // Busca o alimento selecionado para update otimista
+  const selectedFood = foodStore.foods.find(f => f._id === newFoodId)
+
+  // Salva estado anterior para rollback
+  const oldAdaptedMeals = JSON.parse(JSON.stringify(checkinStore.adaptedMeals))
+
+  // Update otimista: atualiza adapted meals localmente
+  if (selectedFood) {
+    const targetCalories = swapTarget.value.calories
+    const equivalentGrams = previewEquivalentGrams(targetCalories, selectedFood.caloriesPer100g)
+    const factor = equivalentGrams / 100
+
+    const optimisticFood = {
+      name: selectedFood.name,
+      quantity: `${equivalentGrams}g`,
+      calories: Math.round(selectedFood.caloriesPer100g * factor),
+      protein: Math.round(selectedFood.proteinPer100g * factor),
+      carbs: Math.round(selectedFood.carbsPer100g * factor),
+      fat: Math.round(selectedFood.fatPer100g * factor),
+      originalQuantity: `${equivalentGrams}g`,
+      originalCalories: Math.round(selectedFood.caloriesPer100g * factor),
+    }
+
+    const mealName = mealStates.value[mealIndex]?.mealName
+    const adaptedIdx = checkinStore.adaptedMeals.findIndex(m => m.name === mealName)
+
+    if (adaptedIdx !== -1) {
+      const adapted = checkinStore.adaptedMeals[adaptedIdx]
+      adapted.foods[foodIndex] = optimisticFood
+      adapted.totalCalories = adapted.foods.reduce((sum, f) => sum + f.calories, 0)
+      adapted.totalProtein = adapted.foods.reduce((sum, f) => sum + f.protein, 0)
+      adapted.totalCarbs = adapted.foods.reduce((sum, f) => sum + f.carbs, 0)
+      adapted.totalFat = adapted.foods.reduce((sum, f) => sum + f.fat, 0)
+    }
+  }
+
+  // Animação
+  swappedCell.value = { mealIndex, foodIndex }
+  setTimeout(() => { swappedCell.value = null }, 700)
+
+  // Fecha modal
+  showSwapModal.value = false
+  swapTarget.value = null
+
+  // Sincroniza com backend (check-in swap — não altera a dieta base)
+  try {
+    await checkinStore.swapFoodInCheckIn(
+      activeDiet.value._id,
+      mealIndex,
+      foodIndex,
+      newFoodId,
+    )
+  } catch {
+    // Rollback adapted meals
+    checkinStore.adaptedMeals.splice(0, checkinStore.adaptedMeals.length, ...oldAdaptedMeals)
+  }
+}
+
+// Calcula gramas equivalentes para preview (mesma fórmula do backend)
+function previewEquivalentGrams(targetCalories: number, caloriesPer100g: number): number {
+  if (caloriesPer100g === 0) return 100
+  const rawGrams = (targetCalories / caloriesPer100g) * 100
+  const rounded = Math.round(rawGrams / 5) * 5
+  return Math.max(5, rounded)
 }
 
 // Helpers de formatação
@@ -365,13 +453,15 @@ function scalePercent(factor: number): string {
                   <th class="text-right font-normal pb-1">P</th>
                   <th class="text-right font-normal pb-1">C</th>
                   <th class="text-right font-normal pb-1">G</th>
+                  <th class="w-8"></th>
                 </tr>
               </thead>
               <tbody>
                 <tr
-                  v-for="food in (getAdaptedMeal(meal.mealName)?.foods || activeDiet.meals[index]?.foods || [])"
-                  :key="food.name"
-                  class="text-zinc-700"
+                  v-for="(food, fIdx) in (getAdaptedMeal(meal.mealName)?.foods || activeDiet.meals[index]?.foods || [])"
+                  :key="`${index}-${fIdx}`"
+                  class="text-zinc-700 group"
+                  :class="{ 'swap-flash': swappedCell?.mealIndex === index && swappedCell?.foodIndex === fIdx }"
                 >
                   <td class="py-0.5">{{ food.name }}</td>
                   <td class="text-right py-0.5">
@@ -385,6 +475,15 @@ function scalePercent(factor: number): string {
                   <td class="text-right py-0.5 text-zinc-400">{{ Math.round(food.protein) }}</td>
                   <td class="text-right py-0.5 text-zinc-400">{{ Math.round(food.carbs) }}</td>
                   <td class="text-right py-0.5 text-zinc-400">{{ Math.round(food.fat) }}</td>
+                  <td class="text-right py-0.5">
+                    <button
+                      class="text-zinc-300 hover:text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                      title="Trocar alimento"
+                      @click="openSwapModal(index, fIdx, food.name, food.calories)"
+                    >
+                      &#8644;
+                    </button>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -492,6 +591,38 @@ function scalePercent(factor: number): string {
       >
         {{ saving ? 'Salvando...' : 'Salvar Check-in' }}
       </UButton>
+
+      <!-- Modal de troca de alimento (check-in = troca por dia, não altera a dieta base) -->
+      <FoodSwapModal
+        :open="showSwapModal"
+        :target-food="swapTarget"
+        @update:open="showSwapModal = $event"
+        @swap="handleSwap"
+      />
     </template>
   </div>
 </template>
+
+<style scoped>
+@keyframes swap-flash {
+  0% {
+    filter: blur(4px);
+    opacity: 0.3;
+    background-color: rgb(16 185 129 / 0.15);
+  }
+  50% {
+    filter: blur(0);
+    opacity: 1;
+    background-color: rgb(16 185 129 / 0.1);
+  }
+  100% {
+    filter: blur(0);
+    opacity: 1;
+    background-color: transparent;
+  }
+}
+
+.swap-flash td {
+  animation: swap-flash 0.7s ease-out;
+}
+</style>

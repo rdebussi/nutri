@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import { buildDietPrompt, NUTRITIONIST_SYSTEM_PROMPT } from './ai.prompts.js'
-import type { DietPromptInput } from './ai.prompts.js'
+import { buildDietPrompt, buildMealRefreshPrompt, NUTRITIONIST_SYSTEM_PROMPT } from './ai.prompts.js'
+import type { DietPromptInput, MealRefreshInput } from './ai.prompts.js'
 
 // ====================================================
 // AI SERVICE — Google Gemini
@@ -39,6 +39,20 @@ export type GeneratedDiet = {
   totalCarbs: number
   totalFat: number
   notes: string
+}
+
+export type GeneratedMeal = {
+  name: string
+  time: string
+  foods: {
+    name: string
+    quantity: string
+    calories: number
+    protein: number
+    carbs: number
+    fat: number
+  }[]
+  totalCalories: number
 }
 
 export class AiService {
@@ -128,6 +142,52 @@ export class AiService {
       return diet
     } catch {
       throw new Error('A IA retornou uma resposta inválida (JSON malformado)')
+    }
+  }
+
+  // ====================================================
+  // GERAR REFEIÇÃO INDIVIDUAL (Meal Refresh)
+  // ====================================================
+  // Gera uma refeição substituta com ingredientes diferentes
+  // mas mesmas calorias totais. Reutiliza o mesmo modelo e
+  // persona de nutricionista.
+  async generateSingleMeal(input: MealRefreshInput): Promise<GeneratedMeal> {
+    const userPrompt = buildMealRefreshPrompt(input)
+
+    const model = this.client.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      systemInstruction: NUTRITIONIST_SYSTEM_PROMPT,
+    })
+
+    // maxOutputTokens: 16384 — mesma margem que generateDiet.
+    // O Gemini 2.5 Flash usa ~4000 "thinking tokens" internos antes
+    // de responder. Com 4096, a resposta truncava e o JSON saía incompleto.
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+      generationConfig: {
+        temperature: 0.8, // Um pouco mais criativo para variar ingredientes
+        maxOutputTokens: 16384,
+        responseMimeType: 'application/json',
+      },
+    })
+
+    const content = result.response.text()
+    if (!content) {
+      throw new Error('A IA não retornou uma resposta')
+    }
+
+    try {
+      const meal = JSON.parse(content) as GeneratedMeal
+
+      // Normaliza totais a partir dos foods reais
+      meal.totalCalories = Math.round(
+        meal.foods.reduce((sum, f) => sum + (f.calories || 0), 0),
+      )
+
+      return meal
+    } catch {
+      console.error('Gemini raw response (meal refresh):', content.substring(0, 500))
+      throw new Error('A IA retornou uma refeição inválida (JSON malformado)')
     }
   }
 }

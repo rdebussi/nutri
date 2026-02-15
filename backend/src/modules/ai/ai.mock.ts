@@ -1,5 +1,5 @@
-import type { DietPromptInput } from './ai.prompts.js'
-import type { GeneratedDiet } from './ai.service.js'
+import type { DietPromptInput, MealRefreshInput } from './ai.prompts.js'
+import type { GeneratedDiet, GeneratedMeal } from './ai.service.js'
 
 // ====================================================
 // MOCK DO AI SERVICE
@@ -75,6 +75,49 @@ export class MockAiService {
       totalCarbs: 169,
       totalFat: 83,
       notes: `Dieta gerada em modo demonstração. ${input.restrictions?.length ? `Restrições consideradas: ${input.restrictions.join(', ')}.` : ''} Beba pelo menos 2 litros de água por dia.`,
+    }
+  }
+
+  async generateSingleMeal(input: MealRefreshInput): Promise<GeneratedMeal> {
+    // Simula delay da API (~1s)
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    // Gera uma refeição alternativa com os mesmos macros alvo
+    // Distribui entre 3 alimentos genéricos
+    const cal1 = Math.round(input.targetCalories * 0.5)
+    const cal2 = Math.round(input.targetCalories * 0.3)
+    const cal3 = input.targetCalories - cal1 - cal2
+
+    return {
+      name: input.mealName,
+      time: input.mealTime,
+      foods: [
+        {
+          name: 'Quinoa cozida',
+          quantity: '150g',
+          calories: cal1,
+          protein: Math.round(input.targetProtein * 0.4),
+          carbs: Math.round(input.targetCarbs * 0.5),
+          fat: Math.round(input.targetFat * 0.3),
+        },
+        {
+          name: 'Peito de peru',
+          quantity: '100g',
+          calories: cal2,
+          protein: Math.round(input.targetProtein * 0.4),
+          carbs: Math.round(input.targetCarbs * 0.2),
+          fat: Math.round(input.targetFat * 0.3),
+        },
+        {
+          name: 'Tomate cereja',
+          quantity: '80g',
+          calories: cal3,
+          protein: Math.round(input.targetProtein * 0.2),
+          carbs: Math.round(input.targetCarbs * 0.3),
+          fat: Math.round(input.targetFat * 0.4),
+        },
+      ],
+      totalCalories: input.targetCalories,
     }
   }
 }

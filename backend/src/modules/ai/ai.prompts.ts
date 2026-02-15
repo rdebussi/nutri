@@ -126,6 +126,48 @@ Responda APENAS com JSON válido no seguinte formato (sem markdown, sem texto an
 }`
 }
 
+// ====================================================
+// MEAL REFRESH PROMPT
+// ====================================================
+// Gera uma refeição substituta com exatamente as mesmas
+// calorias (tolerância ±20 kcal), usando ingredientes DIFERENTES.
+
+export type MealRefreshInput = {
+  mealName: string
+  mealTime: string
+  targetCalories: number
+  targetProtein: number
+  targetCarbs: number
+  targetFat: number
+  currentFoodNames: string[]
+  restrictions?: string[]
+}
+
+export function buildMealRefreshPrompt(input: MealRefreshInput): string {
+  return `Preciso de uma nova versão da refeição "${input.mealName}" (horário: ${input.mealTime}).
+
+REGRAS OBRIGATÓRIAS:
+- O total de calorias DEVE ser EXATAMENTE ${input.targetCalories} kcal (tolerância: ±20 kcal)
+- Proteína: ~${input.targetProtein}g (tolerância: ±10%)
+- Carboidratos: ~${input.targetCarbs}g (tolerância: ±10%)
+- Gordura: ~${input.targetFat}g (tolerância: ±10%)
+- NÃO use nenhum destes alimentos: ${input.currentFoodNames.join(', ')}
+- Use alimentos DIFERENTES mas com valor nutricional equivalente
+- Entre 2 e 5 alimentos
+- Quantidades práticas (ex: "1 fatia", "200ml", "100g")
+${input.restrictions?.length ? `- Restrições alimentares: ${input.restrictions.join(', ')}` : ''}
+
+Responda APENAS com JSON válido:
+{
+  "name": "${input.mealName}",
+  "time": "${input.mealTime}",
+  "foods": [
+    { "name": "...", "quantity": "...", "calories": 0, "protein": 0, "carbs": 0, "fat": 0 }
+  ],
+  "totalCalories": 0
+}`
+}
+
 // System prompt: define a "persona" da IA.
 // Isso afeta drasticamente a qualidade das respostas.
 export const NUTRITIONIST_SYSTEM_PROMPT = `Você é um nutricionista profissional registrado com 15 anos de experiência.

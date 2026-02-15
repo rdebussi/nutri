@@ -160,9 +160,38 @@ export const useCheckinStore = defineStore('checkin', () => {
     streak.value = stats.streak
   }
 
+  // Troca alimento no check-in (por dia, não altera a dieta base)
+  async function swapFoodInCheckIn(
+    dietId: string,
+    mealIndex: number,
+    foodIndex: number,
+    newFoodId: string,
+    date?: string,
+  ) {
+    loading.value = true
+    error.value = ''
+
+    try {
+      const { api } = useApi()
+      const result = await api<CheckInResponse>('/check-ins/foods/swap', {
+        method: 'PATCH',
+        body: { dietId, mealIndex, foodIndex, newFoodId, ...(date ? { date } : {}) },
+      })
+      todayCheckIn.value = result.checkIn
+      adaptedMeals.value = result.adaptedMeals
+      summary.value = result.summary
+      return result
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : 'Erro ao trocar alimento'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     todayCheckIn, adaptedMeals, summary, weeklyStats, streak,
     loading, error,
-    submitCheckIn, fetchToday, fetchWeeklyStats,
+    submitCheckIn, fetchToday, fetchWeeklyStats, swapFoodInCheckIn,
   }
 })
