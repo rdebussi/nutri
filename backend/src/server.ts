@@ -2,6 +2,7 @@ import mongoose from 'mongoose'
 import { buildApp } from './app.js'
 import { env } from './config/env.js'
 import { getPrisma } from './shared/database/prisma.js'
+import { getRedis } from './shared/database/redis.js'
 import { seedExercises } from './modules/exercise/exercise.seed.js'
 import { seedFoods } from './modules/food/food.seed.js'
 
@@ -31,9 +32,23 @@ async function start() {
     process.exit(1)
   }
 
-  // Desconecta o Mongoose quando o app encerrar
+  // Conecta ao Redis (opcional — cache é best-effort)
+  try {
+    const redis = getRedis()
+    await redis.connect()
+    app.log.info(`Redis connected: ${env.REDIS_URL}`)
+  } catch {
+    app.log.warn('Redis connection failed — cache disabled')
+    // NÃO faz process.exit(1) — Redis é otimização, não dependência crítica
+  }
+
+  // Desconecta Mongoose e Redis quando o app encerrar
   app.addHook('onClose', async () => {
     await mongoose.disconnect()
+    try {
+      const redis = getRedis()
+      await redis.quit()
+    } catch { /* ignore */ }
   })
 
   app.listen({ port: env.PORT, host: env.HOST }, (err, address) => {

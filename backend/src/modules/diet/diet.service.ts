@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import type { AiService } from '../ai/ai.service.js'
 import type { ExerciseRoutineInfo } from '../ai/ai.prompts.js'
+import type { DietCacheService } from './diet-cache.service.js'
 import { Diet } from './diet.model.js'
 import { FoodItem } from '../food/food.model.js'
 import { RefreshLog } from './refresh-log.model.js'
@@ -37,7 +38,8 @@ const REFRESH_LIMITS: Record<string, number> = {
 export class DietService {
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly aiService: AiService
+    private readonly aiService: AiService,
+    private readonly dietCache?: DietCacheService,
   ) {}
 
   async generate(userId: string) {
@@ -116,10 +118,31 @@ export class DietService {
       exerciseRoutine,
     }
 
-    // 5. Chama a IA para gerar a dieta
-    const generated = await this.aiService.generateDiet(promptInput)
+    // 4.5. Tenta o cache primeiro (perfis equivalentes compartilham dietas)
+    let generated: Record<string, unknown>
 
-    // 6. Salva no MongoDB
+    const cacheInput = adjustedTdee && profile?.goal
+      ? { goal: profile.goal, adjustedTdee, restrictions: profile.restrictions || [] }
+      : null
+
+    const cached = cacheInput
+      ? await this.dietCache?.getRandomDiet(cacheInput) ?? null
+      : null
+
+    if (cached) {
+      // Cache hit: usa dieta cacheada (instantâneo, sem chamar Gemini)
+      generated = cached
+    } else {
+      // 5. Cache miss: chama a IA para gerar a dieta
+      generated = await this.aiService.generateDiet(promptInput)
+
+      // Salva no cache para futuros usuários similares
+      if (cacheInput) {
+        await this.dietCache?.addToPool(cacheInput, generated)
+      }
+    }
+
+    // 6. Salva no MongoDB (sempre, cache hit ou não — cada user tem sua cópia)
     const diet = await Diet.create({
       userId,
       ...generated,

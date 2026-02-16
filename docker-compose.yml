@@ -29,6 +29,20 @@ services:
       timeout: 5s
       retries: 5
 
+  # MongoDB: dados flexíveis (dietas, receitas, check-ins)
+  mongo:
+    image: mongo:7
+    container_name: nutri-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # Redis: cache, sessões, rate limiting
   redis:
     image: redis:7-alpine
@@ -46,4 +60,5 @@ services:
 # Volumes nomeados: dados persistem mesmo se o container for removido
 volumes:
   postgres_data:
+  mongo_data:
   redis_data:

@@ -132,4 +132,112 @@ describe('DietService', () => {
       expect(Diet.countDocuments).not.toHaveBeenCalled()
     })
   })
+
+  // ====================================================
+  // TESTES DE CACHE
+  // ====================================================
+  describe('generate with cache', () => {
+    const mockCache = {
+      getRandomDiet: vi.fn(),
+      addToPool: vi.fn(),
+    }
+
+    const userWithProfile = {
+      id: 'user-1',
+      name: 'João',
+      role: 'PRO',
+      profile: {
+        id: 'profile-1',
+        weight: 80,
+        height: 180,
+        goal: 'LOSE_WEIGHT',
+        activityLevel: 'MODERATE',
+        restrictions: [],
+        gender: 'MALE',
+        birthDate: new Date('1990-01-01'),
+      },
+    }
+
+    beforeEach(() => {
+      mockCache.getRandomDiet.mockReset()
+      mockCache.addToPool.mockReset()
+      mockPrisma.exerciseRoutine = { findMany: vi.fn().mockResolvedValue([]) }
+    })
+
+    it('should return cached diet without calling AI (cache hit)', async () => {
+      const cachedService = new DietService(mockPrisma, mockAiService, mockCache as any)
+
+      mockPrisma.user.findUnique.mockResolvedValue(userWithProfile)
+      mockCache.getRandomDiet.mockResolvedValue(fakeDiet)
+      ;(Diet.create as any).mockResolvedValue({ ...fakeDiet, _id: 'diet-1', userId: 'user-1' })
+
+      await cachedService.generate('user-1')
+
+      // IA NÃO deve ser chamada
+      expect(mockAiService.generateDiet).not.toHaveBeenCalled()
+      // Cache foi consultado
+      expect(mockCache.getRandomDiet).toHaveBeenCalledWith(
+        expect.objectContaining({ goal: 'LOSE_WEIGHT' }),
+      )
+      // Diet.create DEVE ser chamado (cada user tem sua cópia)
+      expect(Diet.create).toHaveBeenCalled()
+    })
+
+    it('should call AI and populate cache on cache miss', async () => {
+      const cachedService = new DietService(mockPrisma, mockAiService, mockCache as any)
+
+      mockPrisma.user.findUnique.mockResolvedValue(userWithProfile)
+      mockCache.getRandomDiet.mockResolvedValue(null)
+      mockAiService.generateDiet.mockResolvedValue(fakeDiet)
+      ;(Diet.create as any).mockResolvedValue({ ...fakeDiet, _id: 'diet-1', userId: 'user-1' })
+
+      await cachedService.generate('user-1')
+
+      // IA DEVE ser chamada
+      expect(mockAiService.generateDiet).toHaveBeenCalled()
+      // Cache deve ser populado
+      expect(mockCache.addToPool).toHaveBeenCalledWith(
+        expect.objectContaining({ goal: 'LOSE_WEIGHT' }),
+        fakeDiet,
+      )
+    })
+
+    it('should work without cache (backwards compatible)', async () => {
+      // DietService SEM terceiro parâmetro
+      const noCacheService = new DietService(mockPrisma, mockAiService)
+
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        name: 'João',
+        role: 'PRO',
+        profile: null,
+      })
+
+      mockAiService.generateDiet.mockResolvedValue(fakeDiet)
+      ;(Diet.create as any).mockResolvedValue({ ...fakeDiet, _id: 'diet-1' })
+
+      await expect(noCacheService.generate('user-1')).resolves.toBeDefined()
+    })
+
+    it('should skip cache when adjustedTdee is null (no profile)', async () => {
+      const cachedService = new DietService(mockPrisma, mockAiService, mockCache as any)
+
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        name: 'João',
+        role: 'PRO',
+        profile: null, // sem perfil = sem TDEE
+      })
+
+      mockAiService.generateDiet.mockResolvedValue(fakeDiet)
+      ;(Diet.create as any).mockResolvedValue({ ...fakeDiet, _id: 'diet-1' })
+
+      await cachedService.generate('user-1')
+
+      // Cache NÃO deve ser consultado (sem TDEE)
+      expect(mockCache.getRandomDiet).not.toHaveBeenCalled()
+      // IA deve ser chamada direto
+      expect(mockAiService.generateDiet).toHaveBeenCalled()
+    })
+  })
 })

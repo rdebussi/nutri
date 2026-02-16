@@ -1,4 +1,5 @@
 import Redis from 'ioredis'
+import { env } from '../../config/env.js'
 
 // ====================================================
 // CONEXÃO REDIS
@@ -8,8 +9,8 @@ import Redis from 'ioredis'
 //
 // Usamos para:
 // 1. CACHE: guardar respostas da IA (evita pagar de novo pela mesma dieta)
-// 2. RATE LIMITING: contar requests por IP/usuário
-// 3. SESSÕES: guardar refresh tokens (permite invalidação instantânea)
+// 2. RATE LIMITING: contar requests por IP/usuário (futuro)
+// 3. SESSÕES: guardar refresh tokens (futuro)
 //
 // Analogia: Redis é como a memória de curto prazo.
 // PostgreSQL/MongoDB = caderno (permanente mas lento de consultar)
@@ -19,9 +20,9 @@ let redis: Redis | null = null
 
 export function getRedis(): Redis {
   if (!redis) {
-    redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+    redis = new Redis(env.REDIS_URL, {
       maxRetriesPerRequest: 3,
-      lazyConnect: true, // não conecta até a primeira operação
+      lazyConnect: true, // não conecta até chamar .connect()
     })
   }
   return redis

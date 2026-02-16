@@ -1,8 +1,11 @@
 import type { FastifyInstance } from 'fastify'
 import type { PrismaClient } from '@prisma/client'
 import { DietService } from './diet.service.js'
+import { DietCacheService } from './diet-cache.service.js'
 import { AiService } from '../ai/ai.service.js'
 import { MockAiService } from '../ai/ai.mock.js'
+import { getRedis } from '../../shared/database/redis.js'
+import { env } from '../../config/env.js'
 import { authMiddleware } from '../../shared/middleware/auth.middleware.js'
 import { AppError } from '../../shared/utils/errors.js'
 
@@ -31,7 +34,13 @@ export async function dietRoutes(
   const aiService = apiKey && apiKey !== 'your-gemini-key-here'
     ? new AiService(apiKey)
     : new MockAiService()
-  const dietService = new DietService(opts.prisma, aiService as AiService)
+
+  // Cache Redis: server.ts já conecta o singleton, aqui só instanciamos o service.
+  // DietCacheService verifica isAvailable internamente (graceful se Redis estiver fora).
+  const redis = getRedis()
+  const dietCache = new DietCacheService(redis, env.DIET_CACHE_TTL)
+
+  const dietService = new DietService(opts.prisma, aiService as AiService, dietCache)
 
   // Protege todas as rotas
   app.addHook('onRequest', authMiddleware)
