@@ -40,7 +40,7 @@
 - [x] Limites de geração por plano (FREE=3/mês, PRO=ilimitado)
 - [x] Salvar dietas geradas no MongoDB (Mongoose)
 - [x] Endpoints: gerar dieta, listar dietas, ver dieta
-- [ ] Cache de respostas no Redis
+- [x] Cache de respostas no Redis (diet-cache.service.ts)
 
 ### Frontend
 - [x] Tela de geração de dieta com loading
@@ -167,6 +167,62 @@
   - Skeleton animation durante refresh, swap-flash animation
   - Badge com refreshesRemaining no topo
 - [x] Testes: 169 backend + 38 frontend = 207 total
+
+### 3.4c Edição de Refeição + Alimentos Customizados + Favoritos ✅
+**Objetivo:** Usuário edita o que realmente comeu, cria alimentos próprios e marca favoritos.
+
+#### Backend
+- [x] Alimentos customizados (UserFood)
+  - CRUD: POST/GET/PUT/DELETE /api/v1/foods/custom
+  - Macros por 100g ou por porção (conversão automática per-serving → per-100g)
+  - Index composto unique: { userId, name } + text index para busca
+  - Validação Zod com refine (exige per-100g OU per-serving)
+  - Ownership: apenas o dono pode editar/deletar
+- [x] Favoritos (FoodFavorite)
+  - Toggle pattern: POST /api/v1/foods/favorites (add/remove)
+  - GET /api/v1/foods/favorites (lista populada com dados do alimento)
+  - DELETE /api/v1/foods/favorites/:foodId
+  - Suporte a ambas fontes: 'database' (FoodItem) e 'custom' (UserFood)
+- [x] Edição de refeição no check-in (MealOverride)
+  - PATCH /api/v1/check-ins/meals/edit
+  - MealOverride substitui todos os foods de uma refeição no dia
+  - Snapshot do original preservado para comparação
+  - Prioridade: mealOverride > foodOverride (mesmo mealIndex)
+  - Adaptação em cascata: refeições pendentes recalculam automaticamente
+  - Dieta base NÃO é alterada (edição afeta apenas o check-in do dia)
+- [x] Busca unificada de alimentos
+  - GET /api/v1/foods?include=custom,favorites
+  - Mergea FoodItem + UserFood quando autenticado + include=custom
+  - Marca isFavorite quando include=favorites
+  - Backward compatible: sem include, retorna apenas FoodItem
+- [x] Funções puras: applyMealOverrides() (deep clone, sem mutação)
+- [x] Testes: 249 backend total (59 novos — user-food, food-favorite, meal-overrides, meal-edit)
+
+#### Frontend
+- [x] CustomFoodModal.vue — formulário de alimento customizado
+  - Duas tabs de input: por 100g e por porção
+  - Preview em tempo real dos macros normalizados
+  - Categoria, ingredientes (opcional)
+- [x] MealEditModal.vue — editor completo de refeição
+  - Lista editável de alimentos (editar quantidade, remover)
+  - Recálculo proporcional de macros ao editar gramas
+  - 3 tabs para adicionar: Buscar / Favoritos / Meus Alimentos
+  - Busca unificada com ícone de favorito (estrela)
+  - Badge "Meu" em alimentos customizados
+  - Botão "Criar alimento" abre CustomFoodModal (nested)
+  - Totais em tempo real (kcal, P, C, G)
+- [x] Check-in page atualizada
+  - 3 botões por refeição: Comi / Pulei / Editar
+  - Badge "Editado" (azul) em refeições com mealOverride
+  - Tooltip: "Original: X kcal → Editado: Y kcal"
+  - Botão "Editar" abre MealEditModal
+- [x] Food store estendido
+  - customFoods, favorites, fetchFoodsUnified
+  - createCustomFood, updateCustomFood, deleteCustomFood
+  - toggleFavorite, fetchFavorites
+- [x] Checkin store estendido
+  - editMealInCheckIn → PATCH /check-ins/meals/edit
+- [x] Testes: 79 frontend total (17 novos — food-store, custom-food, meal-edit-modal, checkin-store)
 
 ### 3.5 Micronutrientes
 **Objetivo:** Dietas consideram vitaminas e minerais, não só macronutrientes.

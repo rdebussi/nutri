@@ -10,6 +10,7 @@ import { FOOD_CATEGORIES } from './food.model.js'
 export const foodQuerySchema = z.object({
   search: z.string().optional(),
   category: z.enum(FOOD_CATEGORIES).optional(),
+  include: z.string().optional(), // "custom", "favorites", ou "custom,favorites"
 })
 
 export type FoodQuery = z.infer<typeof foodQuerySchema>

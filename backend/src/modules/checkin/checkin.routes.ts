@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { PrismaClient } from '@prisma/client'
 import { CheckInService } from './checkin.service.js'
-import { createCheckInSchema, dateQuerySchema, swapFoodInCheckInSchema } from './checkin.validator.js'
+import { createCheckInSchema, dateQuerySchema, swapFoodInCheckInSchema, editMealInCheckInSchema } from './checkin.validator.js'
 import { authMiddleware } from '../../shared/middleware/auth.middleware.js'
 
 // ====================================================
@@ -70,6 +70,23 @@ export async function checkinRoutes(
       input.mealIndex,
       input.foodIndex,
       input.newFoodId,
+      input.date,
+    )
+
+    return { success: true, data: result }
+  })
+
+  // PATCH /api/v1/check-ins/meals/edit
+  // Edita uma refeição completa no check-in (por dia), sem alterar a dieta base.
+  // Salva um meal override e retorna adapted meals atualizadas.
+  app.patch('/meals/edit', async (request) => {
+    const input = editMealInCheckInSchema.parse(request.body)
+
+    const result = await checkinService.editMealInCheckIn(
+      request.userId!,
+      input.dietId,
+      input.mealIndex,
+      input.foods,
       input.date,
     )
 

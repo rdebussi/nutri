@@ -1,9 +1,10 @@
 <!-- ====================================================
   CHECK-IN — Registro diário de refeições adaptativas
   ====================================================
-  FASE 3.3: O usuário marca refeições como "comi" ou "pulei".
-  Quando uma refeição é pulada ou exercício extra é feito,
-  as refeições pendentes são recalculadas automaticamente.
+  FASE 3.4c: O usuário marca refeições como "comi", "pulei"
+  ou "editar" para registrar o que realmente comeu.
+  Quando uma refeição é editada/pulada ou exercício extra é
+  feito, as refeições pendentes são recalculadas automaticamente.
 -->
 
 <script setup lang="ts">
@@ -180,6 +181,39 @@ async function handleSave(extraExercises?: Array<{
 }
 
 // ====================================================
+// EDIÇÃO DE REFEIÇÃO — MealEditModal (por dia)
+// ====================================================
+// A edição substitui todos os foods de uma refeição no check-in,
+// NÃO altera a dieta base. As outras refeições se adaptam.
+const showEditModal = ref(false)
+const editTarget = ref<{ mealIndex: number; meal: any } | null>(null)
+
+function openEditModal(mealIndex: number, mealName: string) {
+  // Pega a versão mais recente: adaptada (se disponível) ou original da dieta
+  const adapted = getAdaptedMeal(mealName)
+  const original = activeDiet.value?.meals[mealIndex]
+  const meal = adapted || original
+  if (!meal) return
+
+  editTarget.value = { mealIndex, meal }
+  showEditModal.value = true
+}
+
+function onMealEditSaved() {
+  // As adapted meals e summary já foram atualizadas pelo store
+  // Mostra feedback visual
+  saved.value = true
+  setTimeout(() => { saved.value = false }, 3000)
+}
+
+// Verifica se uma refeição tem mealOverride (foi editada pelo usuário)
+function isMealEdited(mealIndex: number): boolean {
+  const checkIn = checkinStore.todayCheckIn as any
+  if (!checkIn?.mealOverrides) return false
+  return checkIn.mealOverrides.some((o: any) => o.mealIndex === mealIndex)
+}
+
+// ====================================================
 // TROCA DE ALIMENTOS — Check-in swap (por dia)
 // ====================================================
 // A troca no check-in salva um override no documento do check-in,
@@ -301,7 +335,7 @@ function scalePercent(factor: number): string {
       <UCard class="mb-4">
         <div class="mb-3">
           <h2 class="font-semibold text-zinc-800">{{ activeDiet.title }}</h2>
-          <p class="text-sm text-zinc-500">Marque cada refeição como "Comi" ou "Pulei"</p>
+          <p class="text-sm text-zinc-500">Marque cada refeição: Comi, Pulei ou Editar</p>
         </div>
 
         <!-- Barra de progresso -->
@@ -382,9 +416,19 @@ function scalePercent(factor: number): string {
             <div class="flex-1">
               <div class="flex items-center gap-2">
                 <span class="font-semibold text-zinc-800">{{ meal.mealName }}</span>
+                <!-- Badge de edição (refeição editada manualmente) -->
+                <UBadge
+                  v-if="isMealEdited(index)"
+                  color="info"
+                  variant="subtle"
+                  size="xs"
+                  :title="`Original: ${activeDiet.meals[index]?.totalCalories} kcal → Editado: ${getMealMacros(meal.mealName, index).totalCalories} kcal`"
+                >
+                  Editado
+                </UBadge>
                 <!-- Badge de adaptação -->
                 <UBadge
-                  v-if="getAdaptedMeal(meal.mealName)?.adapted"
+                  v-else-if="getAdaptedMeal(meal.mealName)?.adapted"
                   color="amber"
                   variant="subtle"
                   size="xs"
@@ -421,7 +465,7 @@ function scalePercent(factor: number): string {
               </p>
             </div>
 
-            <!-- Botões de ação -->
+            <!-- Botões de ação: Comi / Pulei / Editar -->
             <div class="flex gap-1">
               <UButton
                 :color="meal.status === 'completed' ? 'primary' : 'neutral'"
@@ -438,6 +482,14 @@ function scalePercent(factor: number): string {
                 @click="setMealStatus(meal.mealName, meal.status === 'skipped' ? 'pending' : 'skipped')"
               >
                 Pulei
+              </UButton>
+              <UButton
+                :color="isMealEdited(index) ? 'info' : 'neutral'"
+                :variant="isMealEdited(index) ? 'solid' : 'outline'"
+                size="xs"
+                @click="openEditModal(index, meal.mealName)"
+              >
+                &#9998; Editar
               </UButton>
             </div>
           </div>
@@ -598,6 +650,16 @@ function scalePercent(factor: number): string {
         :target-food="swapTarget"
         @update:open="showSwapModal = $event"
         @swap="handleSwap"
+      />
+
+      <!-- Modal de edição de refeição (edita todos os foods de uma refeição) -->
+      <MealEditModal
+        :open="showEditModal"
+        :meal="editTarget?.meal || null"
+        :meal-index="editTarget?.mealIndex ?? 0"
+        :diet-id="activeDiet._id"
+        @update:open="showEditModal = $event"
+        @saved="onMealEditSaved"
       />
     </template>
   </div>

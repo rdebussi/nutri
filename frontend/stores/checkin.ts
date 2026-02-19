@@ -189,9 +189,44 @@ export const useCheckinStore = defineStore('checkin', () => {
     }
   }
 
+  // Edita uma refeição inteira no check-in (não altera a dieta base)
+  async function editMealInCheckIn(
+    dietId: string,
+    mealIndex: number,
+    foods: Array<{
+      name: string
+      quantity: string
+      calories: number
+      protein: number
+      carbs: number
+      fat: number
+    }>,
+    date?: string,
+  ) {
+    loading.value = true
+    error.value = ''
+
+    try {
+      const { api } = useApi()
+      const result = await api<CheckInResponse>('/check-ins/meals/edit', {
+        method: 'PATCH',
+        body: { dietId, mealIndex, foods, ...(date ? { date } : {}) },
+      })
+      todayCheckIn.value = result.checkIn
+      adaptedMeals.value = result.adaptedMeals
+      summary.value = result.summary
+      return result
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : 'Erro ao editar refeição'
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     todayCheckIn, adaptedMeals, summary, weeklyStats, streak,
     loading, error,
-    submitCheckIn, fetchToday, fetchWeeklyStats, swapFoodInCheckIn,
+    submitCheckIn, fetchToday, fetchWeeklyStats, swapFoodInCheckIn, editMealInCheckIn,
   }
 })

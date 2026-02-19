@@ -8,6 +8,8 @@ import { dietRoutes } from './modules/diet/diet.routes.js'
 import { checkinRoutes } from './modules/checkin/checkin.routes.js'
 import { exerciseRoutes } from './modules/exercise/exercise.routes.js'
 import { foodRoutes } from './modules/food/food.routes.js'
+import { userFoodRoutes } from './modules/food/user-food.routes.js'
+import { foodFavoriteRoutes } from './modules/food/food-favorite.routes.js'
 import { errorHandler } from './shared/middleware/error-handler.js'
 
 // ====================================================
@@ -89,6 +91,12 @@ export function buildApp(opts: AppOptions = {}) {
   // Rotas PÚBLICAS (não dependem de Prisma, usam MongoDB)
   app.register(exerciseRoutes, { prefix: '/api/v1/exercises' })
   app.register(foodRoutes, { prefix: '/api/v1/foods' })
+
+  // Rotas de alimentos customizados (autenticadas, dependem de Prisma para auth)
+  if (opts.prisma) {
+    app.register(userFoodRoutes, { prefix: '/api/v1/foods/custom', prisma: opts.prisma })
+    app.register(foodFavoriteRoutes, { prefix: '/api/v1/foods/favorites', prisma: opts.prisma })
+  }
 
   return app
 }

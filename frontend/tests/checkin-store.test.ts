@@ -242,4 +242,43 @@ describe('CheckIn Store', () => {
     expect(store.error).toBe('Alimento não encontrado')
     expect(store.loading).toBe(false)
   })
+
+  // ====================================================
+  // editMealInCheckIn — Edição de refeição (por dia)
+  // ====================================================
+
+  it('editMealInCheckIn calls API with correct payload', async () => {
+    const editResponse = {
+      checkIn: { ...mockCheckInResponse.checkIn, mealOverrides: [{ mealIndex: 0, editedFoods: [] }] },
+      adaptedMeals: mockCheckInResponse.adaptedMeals,
+      summary: mockCheckInResponse.summary,
+    }
+    mockApi.mockResolvedValue(editResponse)
+
+    const store = useCheckinStore()
+    await store.editMealInCheckIn('diet-1', 0, [
+      { name: 'Sonho', quantity: '1 unidade', calories: 350, protein: 5, carbs: 45, fat: 18 },
+    ])
+
+    expect(mockApi).toHaveBeenCalledWith('/check-ins/meals/edit', {
+      method: 'PATCH',
+      body: {
+        dietId: 'diet-1',
+        mealIndex: 0,
+        foods: [{ name: 'Sonho', quantity: '1 unidade', calories: 350, protein: 5, carbs: 45, fat: 18 }],
+      },
+    })
+    expect(store.todayCheckIn).toEqual(editResponse.checkIn)
+    expect(store.adaptedMeals).toEqual(editResponse.adaptedMeals)
+  })
+
+  it('editMealInCheckIn sets error on failure', async () => {
+    mockApi.mockRejectedValue(new Error('Refeição inválida'))
+
+    const store = useCheckinStore()
+    await expect(store.editMealInCheckIn('diet-1', 99, [])).rejects.toThrow('Refeição inválida')
+
+    expect(store.error).toBe('Refeição inválida')
+    expect(store.loading).toBe(false)
+  })
 })

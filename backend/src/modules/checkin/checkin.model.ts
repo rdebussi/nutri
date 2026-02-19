@@ -55,6 +55,33 @@ export interface IFoodOverride {
   }
 }
 
+// Meal override: edição completa de refeição no check-in (por dia).
+// Não altera a dieta base — substitui TODA a lista de alimentos da refeição.
+// Tem prioridade sobre foodOverrides para o mesmo mealIndex.
+export interface IMealOverride {
+  mealIndex: number
+  originalFoods: {
+    name: string
+    quantity: string
+    calories: number
+    protein: number
+    carbs: number
+    fat: number
+  }[]
+  editedFoods: {
+    name: string
+    quantity: string
+    calories: number
+    protein: number
+    carbs: number
+    fat: number
+  }[]
+  totalCalories: number
+  totalProtein: number
+  totalCarbs: number
+  totalFat: number
+}
+
 export interface ICheckIn extends Document {
   userId: string
   dietId: string
@@ -62,6 +89,7 @@ export interface ICheckIn extends Document {
   meals: IMealCheckIn[]
   exercises: IExerciseLog[]
   foodOverrides: IFoodOverride[]
+  mealOverrides: IMealOverride[]
   adherenceRate: number
   totalCaloriesBurned: number
   createdAt: Date
@@ -100,6 +128,16 @@ const foodOverrideSchema = new Schema<IFoodOverride>({
   newFood: { type: foodInOverrideSchema, required: true },
 }, { _id: false })
 
+const mealOverrideSchema = new Schema<IMealOverride>({
+  mealIndex: { type: Number, required: true },
+  originalFoods: { type: [foodInOverrideSchema], required: true },
+  editedFoods: { type: [foodInOverrideSchema], required: true },
+  totalCalories: { type: Number, required: true },
+  totalProtein: { type: Number, required: true },
+  totalCarbs: { type: Number, required: true },
+  totalFat: { type: Number, required: true },
+}, { _id: false })
+
 const checkInSchema = new Schema<ICheckIn>({
   userId: { type: String, required: true, index: true },
   dietId: { type: String, required: true },
@@ -107,6 +145,7 @@ const checkInSchema = new Schema<ICheckIn>({
   meals: { type: [mealCheckInSchema], required: true },
   exercises: { type: [exerciseLogSchema], default: [] },
   foodOverrides: { type: [foodOverrideSchema], default: [] },
+  mealOverrides: { type: [mealOverrideSchema], default: [] },
   adherenceRate: { type: Number, required: true, min: 0, max: 100 },
   totalCaloriesBurned: { type: Number, default: 0 },
 }, { timestamps: true })

@@ -1,5 +1,8 @@
 import type { FastifyInstance } from 'fastify'
+import jwt from 'jsonwebtoken'
 import { FoodItem } from './food.model.js'
+import { UserFood } from './user-food.model.js'
+import { FoodFavoriteService } from './food-favorite.service.js'
 import { foodQuerySchema } from './food.validator.js'
 
 // ====================================================
@@ -9,10 +12,24 @@ import { foodQuerySchema } from './food.validator.js'
 // Não precisa de autenticação — qualquer usuário pode
 // buscar alimentos para trocar na sua dieta.
 //
-// Segue o mesmo padrão de exercise.routes.ts:
-// GET /foods          → listar todos
-// GET /foods?search=  → buscar por nome (regex case-insensitive)
-// GET /foods?category= → filtrar por categoria
+// Quando autenticado, suporta ?include=custom,favorites:
+// - custom: inclui alimentos do usuário nos resultados
+// - favorites: marca cada resultado com isFavorite: true/false
+
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret'
+const favoriteService = new FoodFavoriteService()
+
+function extractUserId(request: any): string | null {
+  const authHeader = request.headers.authorization
+  if (!authHeader?.startsWith('Bearer ')) return null
+  try {
+    const token = authHeader.substring(7)
+    const payload = jwt.verify(token, JWT_SECRET) as { sub: string }
+    return payload.sub
+  } catch {
+    return null
+  }
+}
 
 export async function foodRoutes(app: FastifyInstance) {
   // GET /api/v1/foods
@@ -33,7 +50,48 @@ export async function foodRoutes(app: FastifyInstance) {
       .sort({ category: 1, name: 1 })
       .lean()
 
-    return { success: true, data: foods }
+    // Base results com source marker
+    let results: any[] = foods.map(f => ({ ...f, source: 'database' }))
+
+    // Parse include flags
+    const includes = (query.include || '').split(',').map(s => s.trim())
+    const includeCustom = includes.includes('custom')
+    const includeFavorites = includes.includes('favorites')
+
+    // Tenta extrair userId do token (sem bloquear se não tiver)
+    const userId = extractUserId(request)
+
+    // Merge custom foods se solicitado e autenticado
+    if (includeCustom && userId) {
+      const customFilter: Record<string, unknown> = { userId }
+      if (query.category) customFilter.category = query.category
+      if (query.search) customFilter.name = new RegExp(query.search, 'i')
+
+      const customFoods = await UserFood.find(customFilter)
+        .sort({ name: 1 })
+        .lean()
+
+      const customResults = customFoods.map(f => ({
+        ...f,
+        source: 'custom',
+        commonPortions: (f as any).servingSize && (f as any).servingName
+          ? [{ name: (f as any).servingName, grams: (f as any).servingSize }]
+          : [],
+      }))
+
+      results = [...results, ...customResults]
+    }
+
+    // Marca favoritos se solicitado e autenticado
+    if (includeFavorites && userId) {
+      const favoriteIds = await favoriteService.getFavoriteIds(userId)
+      results = results.map(f => ({
+        ...f,
+        isFavorite: favoriteIds.has(f._id?.toString() || ''),
+      }))
+    }
+
+    return { success: true, data: results }
   })
 
   // GET /api/v1/foods/:id/suggestions
