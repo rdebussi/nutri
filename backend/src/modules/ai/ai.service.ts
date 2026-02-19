@@ -19,19 +19,24 @@ import type { DietPromptInput, MealRefreshInput } from './ai.prompts.js'
 // - Gemini 2.0 Flash: rápido e barato
 // - responseMimeType: 'application/json' garante JSON válido
 
+import type { IMicronutrients } from '../../shared/types/micronutrients.js'
+
+export type GeneratedFood = {
+  name: string
+  quantity: string
+  calories: number
+  protein: number
+  carbs: number
+  fat: number
+  micronutrients?: IMicronutrients
+}
+
 export type GeneratedDiet = {
   title: string
   meals: {
     name: string
     time: string
-    foods: {
-      name: string
-      quantity: string
-      calories: number
-      protein: number
-      carbs: number
-      fat: number
-    }[]
+    foods: GeneratedFood[]
     totalCalories: number
   }[]
   totalCalories: number
@@ -44,14 +49,7 @@ export type GeneratedDiet = {
 export type GeneratedMeal = {
   name: string
   time: string
-  foods: {
-    name: string
-    quantity: string
-    calories: number
-    protein: number
-    carbs: number
-    fat: number
-  }[]
+  foods: GeneratedFood[]
   totalCalories: number
 }
 

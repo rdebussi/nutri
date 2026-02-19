@@ -22,6 +22,15 @@ function makeFoodItem(overrides: Partial<IFoodItem> = {}): IFoodItem {
     proteinPer100g: 2.5,
     carbsPer100g: 28.1,
     fatPer100g: 0.2,
+    // Micronutrientes per 100g (TACO)
+    fiberPer100g: 1.6,
+    calciumPer100g: 4,
+    ironPer100g: 0.1,
+    sodiumPer100g: 1,
+    potassiumPer100g: 32,
+    magnesiumPer100g: 5,
+    vitaminAPer100g: 0,
+    vitaminCPer100g: 0,
     commonPortions: [
       { name: '1 xícara', grams: 160 },
       { name: '1 colher de servir', grams: 45 },
@@ -59,6 +68,71 @@ describe('FoodService — calculateFoodMacros', () => {
     // 30g de arroz = 38.4 kcal
     expect(result.calories).toBe(38.4)
     expect(result.quantity).toBe('30g')
+  })
+
+  it('should calculate micronutrients for a given quantity', () => {
+    const food = makeFoodItem()
+    const result = calculateFoodMacros(food, 200)
+
+    // 200g de arroz: micros per 100g × 2
+    expect(result.micronutrients).toBeDefined()
+    expect(result.micronutrients!.fiber).toBe(3.2)     // 1.6 × 2
+    expect(result.micronutrients!.calcium).toBe(8)      // 4 × 2
+    expect(result.micronutrients!.iron).toBe(0.2)       // 0.1 × 2
+    expect(result.micronutrients!.sodium).toBe(2)       // 1 × 2
+    expect(result.micronutrients!.potassium).toBe(64)   // 32 × 2
+    expect(result.micronutrients!.magnesium).toBe(10)   // 5 × 2
+    expect(result.micronutrients!.vitaminA).toBe(0)
+    expect(result.micronutrients!.vitaminC).toBe(0)
+  })
+
+  it('should handle food without micro fields (defaults to 0)', () => {
+    // Simula alimento antigo sem campos de micro
+    const food = makeFoodItem({
+      fiberPer100g: undefined,
+      calciumPer100g: undefined,
+      ironPer100g: undefined,
+      sodiumPer100g: undefined,
+      potassiumPer100g: undefined,
+      magnesiumPer100g: undefined,
+      vitaminAPer100g: undefined,
+      vitaminCPer100g: undefined,
+    })
+    const result = calculateFoodMacros(food, 100)
+
+    // Todos os micros devem ser 0 (fallback via ?? 0)
+    expect(result.micronutrients!.fiber).toBe(0)
+    expect(result.micronutrients!.calcium).toBe(0)
+    expect(result.micronutrients!.iron).toBe(0)
+    expect(result.micronutrients!.sodium).toBe(0)
+  })
+
+  it('should calculate micronutrients for a food rich in micros', () => {
+    const espinafre = makeFoodItem({
+      name: 'Espinafre cozido',
+      category: 'vegetables',
+      caloriesPer100g: 22,
+      proteinPer100g: 2.6,
+      carbsPer100g: 3.1,
+      fatPer100g: 0.2,
+      fiberPer100g: 2.1,
+      calciumPer100g: 136,
+      ironPer100g: 1.4,
+      sodiumPer100g: 52,
+      potassiumPer100g: 466,
+      magnesiumPer100g: 87,
+      vitaminAPer100g: 524,
+      vitaminCPer100g: 10,
+    })
+    const result = calculateFoodMacros(espinafre, 150)
+
+    // 150g: factor = 1.5
+    expect(result.micronutrients!.fiber).toBe(3.2)        // 2.1 × 1.5 = 3.15 → 3.2
+    expect(result.micronutrients!.calcium).toBe(204)       // 136 × 1.5
+    expect(result.micronutrients!.iron).toBe(2.1)          // 1.4 × 1.5
+    expect(result.micronutrients!.potassium).toBe(699)     // 466 × 1.5
+    expect(result.micronutrients!.magnesium).toBe(130.5)   // 87 × 1.5
+    expect(result.micronutrients!.vitaminA).toBe(786)      // 524 × 1.5
   })
 })
 

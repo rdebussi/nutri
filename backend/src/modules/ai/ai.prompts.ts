@@ -97,6 +97,8 @@ REGRAS:
 - Respeite TODAS as restrições alimentares
 - Inclua um título criativo para a dieta
 - Adicione observações/dicas personalizadas no campo notes
+- Para CADA alimento, inclua micronutrientes: fiber (g), calcium (mg), iron (mg), sodium (mg), potassium (mg), magnesium (mg), vitaminA (mcg RAE), vitaminC (mg)
+- Busque atingir pelo menos 70% da RDA de cada micronutriente no total da dieta
 
 Responda APENAS com JSON válido no seguinte formato (sem markdown, sem texto antes ou depois):
 {
@@ -112,7 +114,17 @@ Responda APENAS com JSON válido no seguinte formato (sem markdown, sem texto an
           "calories": 0,
           "protein": 0,
           "carbs": 0,
-          "fat": 0
+          "fat": 0,
+          "micronutrients": {
+            "fiber": 0,
+            "calcium": 0,
+            "iron": 0,
+            "sodium": 0,
+            "potassium": 0,
+            "magnesium": 0,
+            "vitaminA": 0,
+            "vitaminC": 0
+          }
         }
       ],
       "totalCalories": 0
@@ -162,7 +174,7 @@ Responda APENAS com JSON válido:
   "name": "${input.mealName}",
   "time": "${input.mealTime}",
   "foods": [
-    { "name": "...", "quantity": "...", "calories": 0, "protein": 0, "carbs": 0, "fat": 0 }
+    { "name": "...", "quantity": "...", "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "micronutrients": { "fiber": 0, "calcium": 0, "iron": 0, "sodium": 0, "potassium": 0, "magnesium": 0, "vitaminA": 0, "vitaminC": 0 } }
   ],
   "totalCalories": 0
 }`

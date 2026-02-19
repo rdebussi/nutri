@@ -12,7 +12,7 @@ import type { IFood } from '../diet/diet.model.js'
 // → fáceis de testar e reutilizar.
 
 /**
- * Calcula os macros de um alimento para uma quantidade específica em gramas.
+ * Calcula os macros e micronutrientes de um alimento para uma quantidade em gramas.
  *
  * Conversão: valor por 100g × (gramas / 100)
  * Ex: Arroz (128 kcal/100g) × 200g = 256 kcal
@@ -27,6 +27,16 @@ export function calculateFoodMacros(food: IFoodItem, grams: number): IFood {
     protein: round1(food.proteinPer100g * factor),
     carbs: round1(food.carbsPer100g * factor),
     fat: round1(food.fatPer100g * factor),
+    micronutrients: {
+      fiber: round1((food.fiberPer100g ?? 0) * factor),
+      calcium: round1((food.calciumPer100g ?? 0) * factor),
+      iron: round1((food.ironPer100g ?? 0) * factor),
+      sodium: round1((food.sodiumPer100g ?? 0) * factor),
+      potassium: round1((food.potassiumPer100g ?? 0) * factor),
+      magnesium: round1((food.magnesiumPer100g ?? 0) * factor),
+      vitaminA: round1((food.vitaminAPer100g ?? 0) * factor),
+      vitaminC: round1((food.vitaminCPer100g ?? 0) * factor),
+    },
   }
 }
 

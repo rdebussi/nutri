@@ -42,6 +42,15 @@ export interface IFoodItem extends Document {
   proteinPer100g: number
   carbsPer100g: number
   fatPer100g: number
+  // Micronutrientes per 100g (baseados na tabela TACO)
+  fiberPer100g?: number      // g
+  calciumPer100g?: number    // mg
+  ironPer100g?: number       // mg
+  sodiumPer100g?: number     // mg
+  potassiumPer100g?: number  // mg
+  magnesiumPer100g?: number  // mg
+  vitaminAPer100g?: number   // mcg RAE
+  vitaminCPer100g?: number   // mg
   commonPortions: ICommonPortion[]
 }
 
@@ -61,6 +70,15 @@ const foodItemSchema = new Schema<IFoodItem>({
   proteinPer100g: { type: Number, required: true, min: 0 },
   carbsPer100g: { type: Number, required: true, min: 0 },
   fatPer100g: { type: Number, required: true, min: 0 },
+  // Micronutrientes per 100g (opcionais — default 0)
+  fiberPer100g: { type: Number, default: 0, min: 0 },
+  calciumPer100g: { type: Number, default: 0, min: 0 },
+  ironPer100g: { type: Number, default: 0, min: 0 },
+  sodiumPer100g: { type: Number, default: 0, min: 0 },
+  potassiumPer100g: { type: Number, default: 0, min: 0 },
+  magnesiumPer100g: { type: Number, default: 0, min: 0 },
+  vitaminAPer100g: { type: Number, default: 0, min: 0 },
+  vitaminCPer100g: { type: Number, default: 0, min: 0 },
   commonPortions: [commonPortionSchema],
 })
 

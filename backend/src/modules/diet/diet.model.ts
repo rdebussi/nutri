@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose'
+import type { IMicronutrients } from '../../shared/types/micronutrients.js'
 
 // ====================================================
 // MODEL DE DIETA (MongoDB / Mongoose)
@@ -22,6 +23,7 @@ export interface IFood {
   protein: number   // em gramas
   carbs: number     // em gramas
   fat: number       // em gramas
+  micronutrients?: IMicronutrients  // opcional para backward compat com dietas antigas
 }
 
 export interface IMeal {
@@ -39,10 +41,23 @@ export interface IDiet extends Document {
   totalProtein: number
   totalCarbs: number
   totalFat: number
+  totalMicronutrients?: IMicronutrients  // totais da dieta
   goal: string
   notes: string
   createdAt: Date
 }
+
+// Schema dos micronutrientes (subdocument)
+const micronutrientsSchema = new Schema({
+  fiber: { type: Number, default: 0 },
+  calcium: { type: Number, default: 0 },
+  iron: { type: Number, default: 0 },
+  sodium: { type: Number, default: 0 },
+  potassium: { type: Number, default: 0 },
+  magnesium: { type: Number, default: 0 },
+  vitaminA: { type: Number, default: 0 },
+  vitaminC: { type: Number, default: 0 },
+}, { _id: false })
 
 // Schema Mongoose — define a ESTRUTURA para o banco
 // Cada campo tem um tipo e regras de validação.
@@ -53,6 +68,7 @@ const foodSchema = new Schema<IFood>({
   protein: { type: Number, required: true },
   carbs: { type: Number, required: true },
   fat: { type: Number, required: true },
+  micronutrients: { type: micronutrientsSchema },
 }, { _id: false }) // _id: false → não gera ID para subdocuments (não precisamos)
 
 const mealSchema = new Schema<IMeal>({
@@ -75,6 +91,7 @@ const dietSchema = new Schema<IDiet>({
   totalProtein: { type: Number, required: true },
   totalCarbs: { type: Number, required: true },
   totalFat: { type: Number, required: true },
+  totalMicronutrients: { type: micronutrientsSchema },
   goal: { type: String, required: true },
   notes: { type: String, default: '' },
 }, {

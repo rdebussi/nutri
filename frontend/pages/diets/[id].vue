@@ -22,11 +22,24 @@ const foodStore = useFoodStore()
 
 const loading = ref(true)
 
+// Micronutrientes: seção colapsável + gênero do usuário
+const showMicros = ref(false)
+const userGender = ref<'MALE' | 'FEMALE'>('MALE')
+
 onMounted(async () => {
   try {
     await dietStore.fetchById(route.params.id as string)
   } finally {
     loading.value = false
+  }
+
+  // Tenta obter o gênero do perfil do usuário (para RDA dos micros)
+  try {
+    const { api } = useApi()
+    const profile = await api<{ gender?: string }>('/users/me/profile')
+    if (profile?.gender === 'FEMALE') userGender.value = 'FEMALE'
+  } catch {
+    // Fallback: MALE (default)
   }
 })
 
@@ -188,6 +201,23 @@ async function handleRefreshMeal(mealIndex: number) {
             <span class="block text-lg font-bold text-pink-700">{{ diet.totalFat }}g</span>
             <span class="text-xs text-zinc-500">Gordura</span>
           </div>
+        </div>
+      </UCard>
+
+      <!-- Micronutrientes -->
+      <UCard v-if="diet.totalMicronutrients" class="mb-4">
+        <div
+          class="flex items-center justify-between cursor-pointer select-none"
+          @click="showMicros = !showMicros"
+        >
+          <h3 class="text-sm font-semibold text-zinc-700">Micronutrientes (% RDA)</h3>
+          <span class="text-xs text-zinc-400">{{ showMicros ? '▲ Fechar' : '▼ Expandir' }}</span>
+        </div>
+        <div v-if="showMicros" class="mt-3 pt-3 border-t border-zinc-100">
+          <MicronutrientsSummary
+            :micronutrients="diet.totalMicronutrients"
+            :gender="userGender"
+          />
         </div>
       </UCard>
 

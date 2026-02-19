@@ -8,6 +8,7 @@ import { RefreshLog } from './refresh-log.model.js'
 import { AppError, NotFoundError } from '../../shared/utils/errors.js'
 import { calculateBMR, calculateWeeklyAvgTDEE, adjustForGoal } from '../../shared/utils/tdee.js'
 import { calculateFoodMacros, calculateEquivalentGrams, formatQuantity } from '../food/food.service.js'
+import { sumMicronutrients } from '../../shared/types/micronutrients.js'
 
 // ====================================================
 // DIET SERVICE
@@ -227,16 +228,7 @@ export class DietService {
     meal.totalCalories = Math.round(
       meal.foods.reduce((sum, f) => sum + f.calories, 0),
     )
-    diet.totalCalories = diet.meals.reduce((sum, m) => sum + m.totalCalories, 0)
-    diet.totalProtein = Math.round(
-      diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.protein, 0), 0),
-    )
-    diet.totalCarbs = Math.round(
-      diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.carbs, 0), 0),
-    )
-    diet.totalFat = Math.round(
-      diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.fat, 0), 0),
-    )
+    this.recalcDietTotals(diet)
 
     // 8. Salva
     await diet.save()
@@ -318,17 +310,8 @@ export class DietService {
       totalCalories: newMeal.totalCalories,
     } as any
 
-    // 8. Recalcula totais da dieta
-    diet.totalCalories = diet.meals.reduce((sum, m) => sum + m.totalCalories, 0)
-    diet.totalProtein = Math.round(
-      diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.protein, 0), 0),
-    )
-    diet.totalCarbs = Math.round(
-      diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.carbs, 0), 0),
-    )
-    diet.totalFat = Math.round(
-      diet.meals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.fat, 0), 0),
-    )
+    // 8. Recalcula totais da dieta (macros + micros)
+    this.recalcDietTotals(diet)
 
     // 9. Salva
     await diet.save()
@@ -336,6 +319,27 @@ export class DietService {
     const refreshesRemaining = limit === -1 ? -1 : Math.max(0, limit - refreshLog.count)
 
     return { diet: diet.toObject(), refreshesRemaining }
+  }
+
+  // ==========================================
+  // RECÁLCULO DE TOTAIS
+  // ==========================================
+  // Recalcula macros + micronutrientes da dieta
+  // a partir dos foods de todas as meals.
+  private recalcDietTotals(diet: any): void {
+    diet.totalCalories = diet.meals.reduce((sum: number, m: any) => sum + m.totalCalories, 0)
+    diet.totalProtein = Math.round(
+      diet.meals.reduce((sum: number, m: any) => sum + m.foods.reduce((s: number, f: any) => s + f.protein, 0), 0),
+    )
+    diet.totalCarbs = Math.round(
+      diet.meals.reduce((sum: number, m: any) => sum + m.foods.reduce((s: number, f: any) => s + f.carbs, 0), 0),
+    )
+    diet.totalFat = Math.round(
+      diet.meals.reduce((sum: number, m: any) => sum + m.foods.reduce((s: number, f: any) => s + f.fat, 0), 0),
+    )
+    diet.totalMicronutrients = sumMicronutrients(
+      diet.meals.flatMap((m: any) => m.foods.map((f: any) => f.micronutrients)),
+    )
   }
 
   // ==========================================

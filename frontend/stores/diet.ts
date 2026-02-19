@@ -11,6 +11,17 @@ import { defineStore } from 'pinia'
 // a dieta (pode levar 5-15 segundos), precisamos mostrar
 // um loading para o usuário não achar que travou.
 
+export type Micronutrients = {
+  fiber: number      // g
+  calcium: number    // mg
+  iron: number       // mg
+  sodium: number     // mg
+  potassium: number  // mg
+  magnesium: number  // mg
+  vitaminA: number   // mcg RAE
+  vitaminC: number   // mg
+}
+
 export type Food = {
   name: string
   quantity: string
@@ -18,6 +29,7 @@ export type Food = {
   protein: number
   carbs: number
   fat: number
+  micronutrients?: Micronutrients
 }
 
 export type Meal = {
@@ -36,6 +48,7 @@ export type Diet = {
   totalProtein: number
   totalCarbs: number
   totalFat: number
+  totalMicronutrients?: Micronutrients
   goal: string
   notes: string
   createdAt: string
