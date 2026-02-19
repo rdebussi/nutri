@@ -49,14 +49,34 @@ export interface IDiet extends Document {
 
 // Schema dos micronutrientes (subdocument)
 const micronutrientsSchema = new Schema({
+  // === Outros ===
   fiber: { type: Number, default: 0 },
+  omega3: { type: Number, default: 0 },
+  cholesterol: { type: Number, default: 0 },
+  // === Vitaminas ===
+  vitaminA: { type: Number, default: 0 },
+  vitaminB1: { type: Number, default: 0 },
+  vitaminB2: { type: Number, default: 0 },
+  vitaminB3: { type: Number, default: 0 },
+  vitaminB5: { type: Number, default: 0 },
+  vitaminB6: { type: Number, default: 0 },
+  vitaminB9: { type: Number, default: 0 },
+  vitaminB12: { type: Number, default: 0 },
+  vitaminC: { type: Number, default: 0 },
+  vitaminD: { type: Number, default: 0 },
+  vitaminE: { type: Number, default: 0 },
+  vitaminK: { type: Number, default: 0 },
+  // === Minerais ===
   calcium: { type: Number, default: 0 },
   iron: { type: Number, default: 0 },
-  sodium: { type: Number, default: 0 },
-  potassium: { type: Number, default: 0 },
   magnesium: { type: Number, default: 0 },
-  vitaminA: { type: Number, default: 0 },
-  vitaminC: { type: Number, default: 0 },
+  phosphorus: { type: Number, default: 0 },
+  potassium: { type: Number, default: 0 },
+  sodium: { type: Number, default: 0 },
+  zinc: { type: Number, default: 0 },
+  copper: { type: Number, default: 0 },
+  manganese: { type: Number, default: 0 },
+  selenium: { type: Number, default: 0 },
 }, { _id: false })
 
 // Schema Mongoose — define a ESTRUTURA para o banco

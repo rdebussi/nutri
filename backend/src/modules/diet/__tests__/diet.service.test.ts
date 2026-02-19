@@ -76,7 +76,7 @@ describe('DietService', () => {
 
       mockAiService.generateDiet.mockResolvedValue(fakeDiet)
 
-      const savedDiet = { ...fakeDiet, _id: 'diet-1', userId: 'user-1', goal: 'LOSE_WEIGHT' }
+      const savedDiet = { ...fakeDiet, _id: 'diet-1', userId: 'user-1', goal: 'LOSE_WEIGHT', save: vi.fn() }
       ;(Diet.create as any).mockResolvedValue(savedDiet)
 
       const result = await dietService.generate('user-1')
@@ -124,7 +124,7 @@ describe('DietService', () => {
       })
 
       mockAiService.generateDiet.mockResolvedValue(fakeDiet)
-      ;(Diet.create as any).mockResolvedValue({ ...fakeDiet, _id: 'diet-1' })
+      ;(Diet.create as any).mockResolvedValue({ ...fakeDiet, _id: 'diet-1', save: vi.fn() })
 
       // Não deve lançar erro mesmo com muitas dietas
       await expect(dietService.generate('user-1')).resolves.toBeDefined()
@@ -169,7 +169,7 @@ describe('DietService', () => {
 
       mockPrisma.user.findUnique.mockResolvedValue(userWithProfile)
       mockCache.getRandomDiet.mockResolvedValue(fakeDiet)
-      ;(Diet.create as any).mockResolvedValue({ ...fakeDiet, _id: 'diet-1', userId: 'user-1' })
+      ;(Diet.create as any).mockResolvedValue({ ...fakeDiet, _id: 'diet-1', userId: 'user-1', save: vi.fn() })
 
       await cachedService.generate('user-1')
 
@@ -189,7 +189,7 @@ describe('DietService', () => {
       mockPrisma.user.findUnique.mockResolvedValue(userWithProfile)
       mockCache.getRandomDiet.mockResolvedValue(null)
       mockAiService.generateDiet.mockResolvedValue(fakeDiet)
-      ;(Diet.create as any).mockResolvedValue({ ...fakeDiet, _id: 'diet-1', userId: 'user-1' })
+      ;(Diet.create as any).mockResolvedValue({ ...fakeDiet, _id: 'diet-1', userId: 'user-1', save: vi.fn() })
 
       await cachedService.generate('user-1')
 
@@ -214,7 +214,7 @@ describe('DietService', () => {
       })
 
       mockAiService.generateDiet.mockResolvedValue(fakeDiet)
-      ;(Diet.create as any).mockResolvedValue({ ...fakeDiet, _id: 'diet-1' })
+      ;(Diet.create as any).mockResolvedValue({ ...fakeDiet, _id: 'diet-1', save: vi.fn() })
 
       await expect(noCacheService.generate('user-1')).resolves.toBeDefined()
     })
@@ -230,7 +230,7 @@ describe('DietService', () => {
       })
 
       mockAiService.generateDiet.mockResolvedValue(fakeDiet)
-      ;(Diet.create as any).mockResolvedValue({ ...fakeDiet, _id: 'diet-1' })
+      ;(Diet.create as any).mockResolvedValue({ ...fakeDiet, _id: 'diet-1', save: vi.fn() })
 
       await cachedService.generate('user-1')
 

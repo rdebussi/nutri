@@ -22,15 +22,32 @@ function makeFoodItem(overrides: Partial<IFoodItem> = {}): IFoodItem {
     proteinPer100g: 2.5,
     carbsPer100g: 28.1,
     fatPer100g: 0.2,
-    // Micronutrientes per 100g (TACO)
+    // Micronutrientes per 100g (TACO + USDA)
     fiberPer100g: 1.6,
+    omega3Per100g: 0,
+    cholesterolPer100g: 0,
+    vitaminAPer100g: 0,
+    vitaminB1Per100g: 0.02,
+    vitaminB2Per100g: 0.01,
+    vitaminB3Per100g: 0.4,
+    vitaminB5Per100g: 0.39,
+    vitaminB6Per100g: 0.05,
+    vitaminB9Per100g: 2,
+    vitaminB12Per100g: 0,
+    vitaminCPer100g: 0,
+    vitaminDPer100g: 0,
+    vitaminEPer100g: 0,
+    vitaminKPer100g: 0,
     calciumPer100g: 4,
     ironPer100g: 0.1,
-    sodiumPer100g: 1,
-    potassiumPer100g: 32,
     magnesiumPer100g: 5,
-    vitaminAPer100g: 0,
-    vitaminCPer100g: 0,
+    phosphorusPer100g: 33,
+    potassiumPer100g: 32,
+    sodiumPer100g: 1,
+    zincPer100g: 0.5,
+    copperPer100g: 0.06,
+    manganesePer100g: 0.4,
+    seleniumPer100g: 7.5,
     commonPortions: [
       { name: '1 xícara', grams: 160 },
       { name: '1 colher de servir', grams: 45 },
@@ -76,35 +93,49 @@ describe('FoodService — calculateFoodMacros', () => {
 
     // 200g de arroz: micros per 100g × 2
     expect(result.micronutrients).toBeDefined()
-    expect(result.micronutrients!.fiber).toBe(3.2)     // 1.6 × 2
-    expect(result.micronutrients!.calcium).toBe(8)      // 4 × 2
-    expect(result.micronutrients!.iron).toBe(0.2)       // 0.1 × 2
-    expect(result.micronutrients!.sodium).toBe(2)       // 1 × 2
-    expect(result.micronutrients!.potassium).toBe(64)   // 32 × 2
-    expect(result.micronutrients!.magnesium).toBe(10)   // 5 × 2
+    expect(result.micronutrients!.fiber).toBe(3.2)       // 1.6 × 2
+    expect(result.micronutrients!.calcium).toBe(8)        // 4 × 2
+    expect(result.micronutrients!.iron).toBe(0.2)         // 0.1 × 2
+    expect(result.micronutrients!.sodium).toBe(2)         // 1 × 2
+    expect(result.micronutrients!.potassium).toBe(64)     // 32 × 2
+    expect(result.micronutrients!.magnesium).toBe(10)     // 5 × 2
     expect(result.micronutrients!.vitaminA).toBe(0)
     expect(result.micronutrients!.vitaminC).toBe(0)
+    // Novos nutrientes
+    expect(result.micronutrients!.vitaminB1).toBe(0)      // 0.02 × 2 = 0.04 → 0
+    expect(result.micronutrients!.vitaminB3).toBe(0.8)    // 0.4 × 2
+    expect(result.micronutrients!.phosphorus).toBe(66)    // 33 × 2
+    expect(result.micronutrients!.zinc).toBe(1)           // 0.5 × 2
+    expect(result.micronutrients!.selenium).toBe(15)      // 7.5 × 2
+    expect(result.micronutrients!.manganese).toBe(0.8)    // 0.4 × 2
+    expect(result.micronutrients!.cholesterol).toBe(0)
+    expect(result.micronutrients!.omega3).toBe(0)
   })
 
   it('should handle food without micro fields (defaults to 0)', () => {
-    // Simula alimento antigo sem campos de micro
-    const food = makeFoodItem({
-      fiberPer100g: undefined,
-      calciumPer100g: undefined,
-      ironPer100g: undefined,
-      sodiumPer100g: undefined,
-      potassiumPer100g: undefined,
-      magnesiumPer100g: undefined,
-      vitaminAPer100g: undefined,
-      vitaminCPer100g: undefined,
-    })
+    // Simula alimento antigo sem campos de micro (todos undefined)
+    const food = {
+      _id: '1',
+      name: 'Alimento legado',
+      category: 'others',
+      caloriesPer100g: 100,
+      proteinPer100g: 10,
+      carbsPer100g: 10,
+      fatPer100g: 5,
+      commonPortions: [],
+    } as IFoodItem
     const result = calculateFoodMacros(food, 100)
 
-    // Todos os micros devem ser 0 (fallback via ?? 0)
+    // Todos os 25 micros devem ser 0 (fallback via ?? 0)
     expect(result.micronutrients!.fiber).toBe(0)
     expect(result.micronutrients!.calcium).toBe(0)
     expect(result.micronutrients!.iron).toBe(0)
     expect(result.micronutrients!.sodium).toBe(0)
+    expect(result.micronutrients!.vitaminD).toBe(0)
+    expect(result.micronutrients!.zinc).toBe(0)
+    expect(result.micronutrients!.cholesterol).toBe(0)
+    expect(result.micronutrients!.omega3).toBe(0)
+    expect(result.micronutrients!.selenium).toBe(0)
   })
 
   it('should calculate micronutrients for a food rich in micros', () => {
@@ -123,6 +154,9 @@ describe('FoodService — calculateFoodMacros', () => {
       magnesiumPer100g: 87,
       vitaminAPer100g: 524,
       vitaminCPer100g: 10,
+      vitaminKPer100g: 483,
+      vitaminB9Per100g: 146,
+      manganesePer100g: 0.9,
     })
     const result = calculateFoodMacros(espinafre, 150)
 
@@ -133,6 +167,36 @@ describe('FoodService — calculateFoodMacros', () => {
     expect(result.micronutrients!.potassium).toBe(699)     // 466 × 1.5
     expect(result.micronutrients!.magnesium).toBe(130.5)   // 87 × 1.5
     expect(result.micronutrients!.vitaminA).toBe(786)      // 524 × 1.5
+    // Novos nutrientes
+    expect(result.micronutrients!.vitaminK).toBe(724.5)    // 483 × 1.5
+    expect(result.micronutrients!.vitaminB9).toBe(219)     // 146 × 1.5
+    expect(result.micronutrients!.manganese).toBe(1.4)     // 0.9 × 1.5 = 1.35 → 1.4
+  })
+
+  it('should calculate cholesterol and omega3 for animal protein', () => {
+    const ovo = makeFoodItem({
+      name: 'Ovo cozido',
+      category: 'proteins',
+      caloriesPer100g: 155,
+      proteinPer100g: 13,
+      carbsPer100g: 1.1,
+      fatPer100g: 11,
+      cholesterolPer100g: 373,
+      omega3Per100g: 0.1,
+      vitaminB12Per100g: 1.1,
+      vitaminDPer100g: 2.2,
+      seleniumPer100g: 30,
+      zincPer100g: 1.3,
+    })
+    const result = calculateFoodMacros(ovo, 50) // 1 ovo ≈ 50g
+
+    // 50g: factor = 0.5
+    expect(result.micronutrients!.cholesterol).toBe(186.5) // 373 × 0.5
+    expect(result.micronutrients!.omega3).toBe(0.1)        // 0.1 × 0.5 = 0.05 → 0.1
+    expect(result.micronutrients!.vitaminB12).toBe(0.6)    // 1.1 × 0.5 = 0.55 → 0.6
+    expect(result.micronutrients!.vitaminD).toBe(1.1)      // 2.2 × 0.5
+    expect(result.micronutrients!.selenium).toBe(15)       // 30 × 0.5
+    expect(result.micronutrients!.zinc).toBe(0.7)          // 1.3 × 0.5 = 0.65 → 0.7
   })
 })
 

@@ -24,14 +24,31 @@ export interface IUserFood extends Document {
   carbsPer100g: number
   fatPer100g: number
   // Micronutrientes per 100g (opcionais)
-  fiberPer100g?: number      // g
-  calciumPer100g?: number    // mg
-  ironPer100g?: number       // mg
-  sodiumPer100g?: number     // mg
-  potassiumPer100g?: number  // mg
-  magnesiumPer100g?: number  // mg
-  vitaminAPer100g?: number   // mcg RAE
-  vitaminCPer100g?: number   // mg
+  fiberPer100g?: number         // g
+  omega3Per100g?: number        // g
+  cholesterolPer100g?: number   // mg
+  vitaminAPer100g?: number      // mcg RAE
+  vitaminB1Per100g?: number     // mg
+  vitaminB2Per100g?: number     // mg
+  vitaminB3Per100g?: number     // mg
+  vitaminB5Per100g?: number     // mg
+  vitaminB6Per100g?: number     // mg
+  vitaminB9Per100g?: number     // mcg
+  vitaminB12Per100g?: number    // mcg
+  vitaminCPer100g?: number      // mg
+  vitaminDPer100g?: number      // mcg
+  vitaminEPer100g?: number      // mg
+  vitaminKPer100g?: number      // mcg
+  calciumPer100g?: number       // mg
+  ironPer100g?: number          // mg
+  magnesiumPer100g?: number     // mg
+  phosphorusPer100g?: number    // mg
+  potassiumPer100g?: number     // mg
+  sodiumPer100g?: number        // mg
+  zincPer100g?: number          // mg
+  copperPer100g?: number        // mg
+  manganesePer100g?: number     // mg
+  seleniumPer100g?: number      // mcg
   servingSize?: number    // gramas por porção (ex: 80g = 1 panqueca)
   servingName?: string    // "1 panqueca", "1 fatia"
   ingredients?: string    // descrição opcional dos ingredientes
@@ -53,13 +70,30 @@ const userFoodSchema = new Schema<IUserFood>({
   fatPer100g: { type: Number, required: true, min: 0 },
   // Micronutrientes per 100g (opcionais — default 0)
   fiberPer100g: { type: Number, default: 0, min: 0 },
+  omega3Per100g: { type: Number, default: 0, min: 0 },
+  cholesterolPer100g: { type: Number, default: 0, min: 0 },
+  vitaminAPer100g: { type: Number, default: 0, min: 0 },
+  vitaminB1Per100g: { type: Number, default: 0, min: 0 },
+  vitaminB2Per100g: { type: Number, default: 0, min: 0 },
+  vitaminB3Per100g: { type: Number, default: 0, min: 0 },
+  vitaminB5Per100g: { type: Number, default: 0, min: 0 },
+  vitaminB6Per100g: { type: Number, default: 0, min: 0 },
+  vitaminB9Per100g: { type: Number, default: 0, min: 0 },
+  vitaminB12Per100g: { type: Number, default: 0, min: 0 },
+  vitaminCPer100g: { type: Number, default: 0, min: 0 },
+  vitaminDPer100g: { type: Number, default: 0, min: 0 },
+  vitaminEPer100g: { type: Number, default: 0, min: 0 },
+  vitaminKPer100g: { type: Number, default: 0, min: 0 },
   calciumPer100g: { type: Number, default: 0, min: 0 },
   ironPer100g: { type: Number, default: 0, min: 0 },
-  sodiumPer100g: { type: Number, default: 0, min: 0 },
-  potassiumPer100g: { type: Number, default: 0, min: 0 },
   magnesiumPer100g: { type: Number, default: 0, min: 0 },
-  vitaminAPer100g: { type: Number, default: 0, min: 0 },
-  vitaminCPer100g: { type: Number, default: 0, min: 0 },
+  phosphorusPer100g: { type: Number, default: 0, min: 0 },
+  potassiumPer100g: { type: Number, default: 0, min: 0 },
+  sodiumPer100g: { type: Number, default: 0, min: 0 },
+  zincPer100g: { type: Number, default: 0, min: 0 },
+  copperPer100g: { type: Number, default: 0, min: 0 },
+  manganesePer100g: { type: Number, default: 0, min: 0 },
+  seleniumPer100g: { type: Number, default: 0, min: 0 },
   servingSize: { type: Number, min: 1 },
   servingName: { type: String },
   ingredients: { type: String, maxlength: 500 },

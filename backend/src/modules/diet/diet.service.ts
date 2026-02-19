@@ -150,6 +150,12 @@ export class DietService {
       goal: user.profile?.goal || 'HEALTH',
     })
 
+    // 7. Recalcula totais (macros + micros) a partir dos foods reais.
+    // A IA pode não retornar totalMicronutrients, mas se retorna
+    // micronutrients por food, calculamos o total corretamente.
+    this.recalcDietTotals(diet)
+    await diet.save()
+
     return diet
   }
 

@@ -1,5 +1,6 @@
 import type { IFoodItem } from './food.model.js'
 import type { IFood } from '../diet/diet.model.js'
+import { MICRO_KEYS, ZERO_MICROS, type IMicronutrients, type MicroKey } from '../../shared/types/micronutrients.js'
 
 // ====================================================
 // FOOD SERVICE
@@ -16,9 +17,18 @@ import type { IFood } from '../diet/diet.model.js'
  *
  * Conversão: valor por 100g × (gramas / 100)
  * Ex: Arroz (128 kcal/100g) × 200g = 256 kcal
+ *
+ * Micronutrientes: itera sobre MICRO_KEYS usando a convenção `${key}Per100g`
+ * para não precisar listar os 25 campos manualmente.
  */
 export function calculateFoodMacros(food: IFoodItem, grams: number): IFood {
   const factor = grams / 100
+
+  const micronutrients = { ...ZERO_MICROS }
+  for (const key of MICRO_KEYS) {
+    const per100gKey = `${key}Per100g` as keyof IFoodItem
+    micronutrients[key] = round1(((food[per100gKey] as number) ?? 0) * factor)
+  }
 
   return {
     name: food.name,
@@ -27,16 +37,7 @@ export function calculateFoodMacros(food: IFoodItem, grams: number): IFood {
     protein: round1(food.proteinPer100g * factor),
     carbs: round1(food.carbsPer100g * factor),
     fat: round1(food.fatPer100g * factor),
-    micronutrients: {
-      fiber: round1((food.fiberPer100g ?? 0) * factor),
-      calcium: round1((food.calciumPer100g ?? 0) * factor),
-      iron: round1((food.ironPer100g ?? 0) * factor),
-      sodium: round1((food.sodiumPer100g ?? 0) * factor),
-      potassium: round1((food.potassiumPer100g ?? 0) * factor),
-      magnesium: round1((food.magnesiumPer100g ?? 0) * factor),
-      vitaminA: round1((food.vitaminAPer100g ?? 0) * factor),
-      vitaminC: round1((food.vitaminCPer100g ?? 0) * factor),
-    },
+    micronutrients,
   }
 }
 

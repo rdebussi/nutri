@@ -20,7 +20,7 @@ services:
       POSTGRES_PASSWORD: nutri123
       POSTGRES_DB: nutri
     ports:
-      - "5432:5432"  # host:container (acessa via localhost:5432)
+      - "5433:5432"  # host:container (acessa via localhost:5433, 5432 pode estar em uso)
     volumes:
       - postgres_data:/var/lib/postgresql/data  # persiste dados entre restarts
     healthcheck:

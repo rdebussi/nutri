@@ -97,8 +97,12 @@ REGRAS:
 - Respeite TODAS as restrições alimentares
 - Inclua um título criativo para a dieta
 - Adicione observações/dicas personalizadas no campo notes
-- Para CADA alimento, inclua micronutrientes: fiber (g), calcium (mg), iron (mg), sodium (mg), potassium (mg), magnesium (mg), vitaminA (mcg RAE), vitaminC (mg)
+- Para CADA alimento, inclua TODOS os 25 micronutrientes abaixo:
+  Outros: fiber (g), omega3 (g), cholesterol (mg)
+  Vitaminas: vitaminA (mcg RAE), vitaminB1 (mg), vitaminB2 (mg), vitaminB3 (mg), vitaminB5 (mg), vitaminB6 (mg), vitaminB9 (mcg), vitaminB12 (mcg), vitaminC (mg), vitaminD (mcg), vitaminE (mg), vitaminK (mcg)
+  Minerais: calcium (mg), iron (mg), magnesium (mg), phosphorus (mg), potassium (mg), sodium (mg), zinc (mg), copper (mg), manganese (mg), selenium (mcg)
 - Busque atingir pelo menos 70% da RDA de cada micronutriente no total da dieta
+- Mantenha sódio e colesterol abaixo de 100% da RDA (são limites, não metas)
 
 Responda APENAS com JSON válido no seguinte formato (sem markdown, sem texto antes ou depois):
 {
@@ -116,14 +120,9 @@ Responda APENAS com JSON válido no seguinte formato (sem markdown, sem texto an
           "carbs": 0,
           "fat": 0,
           "micronutrients": {
-            "fiber": 0,
-            "calcium": 0,
-            "iron": 0,
-            "sodium": 0,
-            "potassium": 0,
-            "magnesium": 0,
-            "vitaminA": 0,
-            "vitaminC": 0
+            "fiber": 0, "omega3": 0, "cholesterol": 0,
+            "vitaminA": 0, "vitaminB1": 0, "vitaminB2": 0, "vitaminB3": 0, "vitaminB5": 0, "vitaminB6": 0, "vitaminB9": 0, "vitaminB12": 0, "vitaminC": 0, "vitaminD": 0, "vitaminE": 0, "vitaminK": 0,
+            "calcium": 0, "iron": 0, "magnesium": 0, "phosphorus": 0, "potassium": 0, "sodium": 0, "zinc": 0, "copper": 0, "manganese": 0, "selenium": 0
           }
         }
       ],
@@ -174,7 +173,7 @@ Responda APENAS com JSON válido:
   "name": "${input.mealName}",
   "time": "${input.mealTime}",
   "foods": [
-    { "name": "...", "quantity": "...", "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "micronutrients": { "fiber": 0, "calcium": 0, "iron": 0, "sodium": 0, "potassium": 0, "magnesium": 0, "vitaminA": 0, "vitaminC": 0 } }
+    { "name": "...", "quantity": "...", "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "micronutrients": { "fiber": 0, "omega3": 0, "cholesterol": 0, "vitaminA": 0, "vitaminB1": 0, "vitaminB2": 0, "vitaminB3": 0, "vitaminB5": 0, "vitaminB6": 0, "vitaminB9": 0, "vitaminB12": 0, "vitaminC": 0, "vitaminD": 0, "vitaminE": 0, "vitaminK": 0, "calcium": 0, "iron": 0, "magnesium": 0, "phosphorus": 0, "potassium": 0, "sodium": 0, "zinc": 0, "copper": 0, "manganese": 0, "selenium": 0 } }
   ],
   "totalCalories": 0
 }`

@@ -12,14 +12,34 @@ import { defineStore } from 'pinia'
 // um loading para o usuário não achar que travou.
 
 export type Micronutrients = {
-  fiber: number      // g
-  calcium: number    // mg
-  iron: number       // mg
-  sodium: number     // mg
-  potassium: number  // mg
-  magnesium: number  // mg
-  vitaminA: number   // mcg RAE
-  vitaminC: number   // mg
+  // === Outros ===
+  fiber: number         // g
+  omega3: number        // g
+  cholesterol: number   // mg
+  // === Vitaminas ===
+  vitaminA: number      // mcg RAE
+  vitaminB1: number     // mg
+  vitaminB2: number     // mg
+  vitaminB3: number     // mg
+  vitaminB5: number     // mg
+  vitaminB6: number     // mg
+  vitaminB9: number     // mcg
+  vitaminB12: number    // mcg
+  vitaminC: number      // mg
+  vitaminD: number      // mcg
+  vitaminE: number      // mg
+  vitaminK: number      // mcg
+  // === Minerais ===
+  calcium: number       // mg
+  iron: number          // mg
+  magnesium: number     // mg
+  phosphorus: number    // mg
+  potassium: number     // mg
+  sodium: number        // mg
+  zinc: number          // mg
+  copper: number        // mg
+  manganese: number     // mg
+  selenium: number      // mcg
 }
 
 export type Food = {

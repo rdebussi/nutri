@@ -408,12 +408,15 @@ export class CheckInService {
       .filter(e => e.isExtra)
       .reduce((sum, e) => sum + e.caloriesBurned, 0)
 
-    // Usa a SOMA REAL das effectiveMeals como target (com overrides aplicados)
+    // Usa os TOTAIS ORIGINAIS da dieta como target.
+    // Se o usuário editou uma refeição para ter mais/menos calorias,
+    // o motor redistribui as refeições pendentes para compensar,
+    // mantendo o total do dia no planejado.
     const dailyTargets = {
-      calories: effectiveMeals.reduce((sum, m) => sum + m.totalCalories, 0),
-      protein: effectiveMeals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.protein, 0), 0),
-      carbs: effectiveMeals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.carbs, 0), 0),
-      fat: effectiveMeals.reduce((sum, m) => sum + m.foods.reduce((s, f) => s + f.fat, 0), 0),
+      calories: diet.totalCalories,
+      protein: diet.totalProtein,
+      carbs: diet.totalCarbs,
+      fat: diet.totalFat,
     }
 
     const result = recalculateMeals({
